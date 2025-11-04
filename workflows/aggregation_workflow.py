@@ -99,6 +99,56 @@ def node_region(state: AggregationState):
     print(f"[DEBUG] node_region: aggregated {len(region_data)} regions")
     return state.copy(update={"region_breakdown": region_data, "question": state.question})
 
+# ADDITIVE: Enhanced aggregation nodes
+def node_breakdown_adset_enhanced(state: AggregationState):
+    """Enhanced adset breakdown dengan metrik lengkap (CPM, CPC, CPLC, Frequency, dll)"""
+    print("[DEBUG] node_breakdown_adset_enhanced: executing")
+    data = aggregate_breakdown_enhanced(state.sheet_data, by="Ad set")
+    print(f"[DEBUG] node_breakdown_adset_enhanced: aggregated {len(data)} adsets")
+    return state.copy(update={"breakdown_adset_enhanced": data, "question": state.question})
+
+def node_breakdown_ad_enhanced(state: AggregationState):
+    """Enhanced ad breakdown dengan metrik lengkap"""
+    print("[DEBUG] node_breakdown_ad_enhanced: executing")
+    data = aggregate_breakdown_enhanced(state.sheet_data, by="Ad")
+    print(f"[DEBUG] node_breakdown_ad_enhanced: aggregated {len(data)} ads")
+    return state.copy(update={"breakdown_ad_enhanced": data, "question": state.question})
+
+def node_age_gender_enhanced(state: AggregationState):
+    """Enhanced age & gender breakdown dengan metrik lengkap"""
+    print("[DEBUG] node_age_gender_enhanced: executing")
+    data = aggregate_age_gender_enhanced(state.sheet_data)
+    print(f"[DEBUG] node_age_gender_enhanced: aggregated {len(data)} age|gender segments")
+    return state.copy(update={"age_gender_enhanced": data, "question": state.question})
+
+def node_period_daily(state: AggregationState):
+    """Daily aggregation dengan metrik lengkap"""
+    print("[DEBUG] node_period_daily: executing")
+    data = aggregate_by_period_enhanced(state.sheet_data, period='daily')
+    print(f"[DEBUG] node_period_daily: aggregated {len(data)} days")
+    return state.copy(update={"period_stats_daily": data, "question": state.question})
+
+def node_period_weekly(state: AggregationState):
+    """Weekly aggregation dengan metrik lengkap"""
+    print("[DEBUG] node_period_weekly: executing")
+    data = aggregate_by_period_enhanced(state.sheet_data, period='weekly')
+    print(f"[DEBUG] node_period_weekly: aggregated {len(data)} weeks")
+    return state.copy(update={"period_stats_weekly": data, "question": state.question})
+
+def node_period_monthly(state: AggregationState):
+    """Monthly aggregation dengan metrik lengkap"""
+    print("[DEBUG] node_period_monthly: executing")
+    data = aggregate_by_period_enhanced(state.sheet_data, period='monthly')
+    print(f"[DEBUG] node_period_monthly: aggregated {len(data)} months")
+    return state.copy(update={"period_stats_monthly": data, "question": state.question})
+
+def node_outbound_clicks(state: AggregationState):
+    """Outbound clicks proportion analysis"""
+    print("[DEBUG] node_outbound_clicks: executing")
+    data = aggregate_outbound_clicks(state.sheet_data)
+    print(f"[DEBUG] node_outbound_clicks: total={data.get('total', 0)}")
+    return state.copy(update={"outbound_clicks": data, "question": state.question})
+
 # Node: Ekstrak ad set per sheet (work1/work2)
 def node_extract_adsets(state: AggregationState):
     # Asumsi: sheet_data digabung dari dua worksheet, urutan: work1 lalu work2
@@ -373,6 +423,14 @@ graph.add_node("breakdown_adset", node_breakdown_adset)
 graph.add_node("breakdown_ad", node_breakdown_ad)
 graph.add_node("age_gender", node_age_gender)
 graph.add_node("region", node_region)  # ADDITIVE: Region node
+# ADDITIVE: Enhanced aggregation nodes
+graph.add_node("breakdown_adset_enhanced", node_breakdown_adset_enhanced)
+graph.add_node("breakdown_ad_enhanced", node_breakdown_ad_enhanced)
+graph.add_node("age_gender_enhanced", node_age_gender_enhanced)
+graph.add_node("period_daily", node_period_daily)
+graph.add_node("period_weekly", node_period_weekly)
+graph.add_node("period_monthly", node_period_monthly)
+graph.add_node("outbound_clicks", node_outbound_clicks)
 graph.add_node("tren_bulanan", node_tren_bulanan)
 
 # Node LLM summary (will be updated in next step to use retrieved_docs)
@@ -628,7 +686,15 @@ graph.add_edge("daily_weekly", "breakdown_adset")
 graph.add_edge("breakdown_adset", "breakdown_ad")
 graph.add_edge("breakdown_ad", "age_gender")
 graph.add_edge("age_gender", "region")  # ADDITIVE: Add region to workflow
-graph.add_edge("region", "llm_summary")
+# ADDITIVE: Connect enhanced aggregation nodes (parallel processing after region)
+graph.add_edge("region", "breakdown_adset_enhanced")
+graph.add_edge("breakdown_adset_enhanced", "breakdown_ad_enhanced")
+graph.add_edge("breakdown_ad_enhanced", "age_gender_enhanced")
+graph.add_edge("age_gender_enhanced", "period_daily")
+graph.add_edge("period_daily", "period_weekly")
+graph.add_edge("period_weekly", "period_monthly")
+graph.add_edge("period_monthly", "outbound_clicks")
+graph.add_edge("outbound_clicks", "llm_summary")
 graph.add_edge("llm_summary", END)
 
 graph.set_entry_point("detect_intent")
