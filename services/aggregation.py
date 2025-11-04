@@ -168,6 +168,160 @@ def aggregate_daily_weekly_cost(sheet_data):
             rows_by_date[tgl.date()].append(r)
     return daily_cost, weekly_cost, rows_by_date
 
+# ADDITIVE: Enhanced daily/weekly/monthly aggregation dengan metrik lengkap
+def aggregate_by_period_enhanced(sheet_data, period='daily'):
+    """
+    Enhanced period agregasi dengan metrik lengkap.
+    period: 'daily', 'weekly', 'monthly'
+    
+    Returns: dict dengan key=(date/week/month), value=dict metrik lengkap
+    
+    ADDITIVE: Tidak menghapus aggregate_daily_weekly_cost lama
+    """
+    stats = defaultdict(lambda: {
+        'cost': 0,
+        'wa': 0,
+        'fb_leads': 0,
+        'lead_form': 0,
+        'impr': 0,
+        'reach': 0,
+        'clicks': 0,
+        'link': 0,
+        'cpwa': 0,
+        'cpm': 0,
+        'cpc': 0,
+        'cplc': 0,
+        'ctr': 0,
+        'lctr': 0,
+        'conversion_rate': 0
+    })
+    
+    def col_fallback(row, names, default=0):
+        for n in names:
+            for k in row.keys():
+                if k.strip().lower() == n.strip().lower():
+                    return row[k]
+        return default
+    
+    print(f"[DEBUG] aggregate_by_period_enhanced: processing {len(sheet_data)} rows, period='{period}'")
+    
+    for r in sheet_data:
+        tgl = None
+        for k in r:
+            if k.lower() in ["tanggal", "date", "tgl"] and r[k]:
+                vstr = str(r[k])
+                try:
+                    if re.match(r"\d{4}-\d{2}-\d{2}", vstr):
+                        tgl = datetime.strptime(vstr, "%Y-%m-%d")
+                    elif re.match(r"\d{2}/\d{2}/\d{4}", vstr):
+                        tgl = datetime.strptime(vstr, "%d/%m/%Y")
+                except:
+                    continue
+                break
+        
+        if not tgl:
+            continue
+        
+        # Determine period key
+        if period == 'daily':
+            key = tgl.date()
+        elif period == 'weekly':
+            key = f"{tgl.year}-W{tgl.isocalendar()[1]:02d}"
+        elif period == 'monthly':
+            key = f"{tgl.year}-{tgl.month:02d}"
+        else:
+            key = tgl.date()  # Default to daily
+        
+        # Aggregate metrics
+        stats[key]['cost'] += safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))
+        stats[key]['impr'] += safe_float(col_fallback(r, ['impressions', 'Impressions', 'IMP', 'imp']))
+        stats[key]['reach'] += safe_float(col_fallback(r, ['reach', 'Reach']))
+        stats[key]['clicks'] += safe_float(col_fallback(r, ['all clicks', 'clicks all', 'All Clicks', 'Clicks all', 'clicks', 'Clicks']))
+        stats[key]['link'] += safe_float(col_fallback(r, ['link clicks', 'Link Clicks', 'link', 'Link']))
+        stats[key]['wa'] += safe_float(col_fallback(r, ['whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads']))
+        stats[key]['fb_leads'] += safe_float(col_fallback(r, ['on-facebook leads', 'On-Facebook Leads', 'Facebook Leads']))
+        stats[key]['lead_form'] += safe_float(col_fallback(r, ['lead form', 'Lead Form', 'LeadForm']))
+    
+    # Calculate derived metrics
+    for key, d in stats.items():
+        d['cpwa'] = (d['cost'] / d['wa']) if d['wa'] > 0 else 0
+        d['cpm'] = (d['cost'] / d['impr'] * 1000) if d['impr'] > 0 else 0
+        d['cpc'] = (d['cost'] / d['clicks']) if d['clicks'] > 0 else 0
+        d['cplc'] = (d['cost'] / d['link']) if d['link'] > 0 else 0
+        d['ctr'] = (d['clicks'] / d['impr'] * 100) if d['impr'] > 0 else 0
+        d['lctr'] = (d['link'] / d['impr'] * 100) if d['impr'] > 0 else 0
+        
+        total_leads = d['wa'] + d['fb_leads'] + d['lead_form']
+        d['conversion_rate'] = (total_leads / d['clicks'] * 100) if d['clicks'] > 0 else 0
+    
+    print(f"[DEBUG] aggregate_by_period_enhanced: found {len(stats)} unique periods")
+    return stats
+
+# ADDITIVE: Outbound clicks breakdown dan proportion analysis
+def aggregate_outbound_clicks(sheet_data):
+    """
+    Agregasi outbound clicks per channel (WhatsApp, Website, Messaging/Form)
+    Returns: dict dengan total dan proportion/percentage per channel
+    
+    ADDITIVE: Fungsi baru untuk analisis channel outbound clicks
+    """
+    stats = {
+        'whatsapp': 0,
+        'website': 0,
+        'messaging': 0,
+        'form': 0,
+        'total': 0,
+        'proportion': {}  # Akan diisi dengan percentage
+    }
+    
+    def col_fallback(row, names, default=0):
+        for n in names:
+            for k in row.keys():
+                if k.strip().lower() == n.strip().lower():
+                    return row[k]
+        return default
+    
+    print(f"[DEBUG] aggregate_outbound_clicks: processing {len(sheet_data)} rows")
+    
+    for r in sheet_data:
+        # WhatsApp outbound clicks
+        stats['whatsapp'] += safe_float(col_fallback(r, [
+            'outbound clicks - whatsapp', 'Outbound Clicks - WhatsApp', 
+            'whatsapp clicks', 'WhatsApp Clicks'
+        ]))
+        
+        # Website outbound clicks
+        stats['website'] += safe_float(col_fallback(r, [
+            'outbound clicks - website', 'Outbound Clicks - Website',
+            'website clicks', 'Website Clicks', 'link clicks', 'Link Clicks'
+        ]))
+        
+        # Messaging outbound clicks
+        stats['messaging'] += safe_float(col_fallback(r, [
+            'outbound clicks - messaging', 'Outbound Clicks - Messaging',
+            'messaging clicks', 'Messaging Clicks'
+        ]))
+        
+        # Form clicks (if exists)
+        stats['form'] += safe_float(col_fallback(r, [
+            'outbound clicks - form', 'Outbound Clicks - Form',
+            'form clicks', 'Form Clicks'
+        ]))
+    
+    # Calculate total and proportions
+    stats['total'] = stats['whatsapp'] + stats['website'] + stats['messaging'] + stats['form']
+    
+    if stats['total'] > 0:
+        stats['proportion']['whatsapp'] = (stats['whatsapp'] / stats['total'] * 100)
+        stats['proportion']['website'] = (stats['website'] / stats['total'] * 100)
+        stats['proportion']['messaging'] = (stats['messaging'] / stats['total'] * 100)
+        stats['proportion']['form'] = (stats['form'] / stats['total'] * 100)
+    else:
+        stats['proportion'] = {'whatsapp': 0, 'website': 0, 'messaging': 0, 'form': 0}
+    
+    print(f"[DEBUG] aggregate_outbound_clicks: total={stats['total']}, WhatsApp={stats['whatsapp']}, Website={stats['website']}")
+    return stats
+
 def aggregate_breakdown(sheet_data, by="Ad set"):
     stats = defaultdict(lambda: {'cost':0,'wa':0,'cpwa':0,'impr':0,'clicks':0,'link':0,'ctr':0,'lctr':0})
     def col_fallback(row, names, default=0):
@@ -212,6 +366,96 @@ def aggregate_age_gender(sheet_data):
         d['cpwa'] = (d['cost']/d['wa']) if d['wa'] else 0
         d['ctr'] = (d['clicks']/d['impr']*100) if d['impr'] else 0
         d['lctr'] = (d['link']/d['impr']*100) if d['impr'] else 0
+    return stats
+
+# ADDITIVE: Enhanced age & gender aggregation dengan metrik lengkap
+def aggregate_age_gender_enhanced(sheet_data):
+    """
+    Enhanced age & gender agregasi dengan metrik tambahan:
+    - Reach, Frequency
+    - CPM, CPC, CPLC
+    - Website CTR
+    - Lead Form, Facebook Leads
+    - Conversion Rate
+    
+    ADDITIVE: Tidak menghapus aggregate_age_gender lama, ini versi enhanced
+    """
+    stats = defaultdict(lambda: {
+        'cost': 0,
+        'wa': 0,           # WhatsApp leads
+        'fb_leads': 0,     # Facebook leads
+        'lead_form': 0,    # Lead Form
+        'impr': 0,         # Impressions
+        'reach': 0,        # Reach
+        'freq_sum': 0,     # Frequency sum
+        'freq_count': 0,   # Frequency count
+        'clicks': 0,       # All clicks
+        'link': 0,         # Link clicks
+        # Derived metrics
+        'cpwa': 0,
+        'cpm': 0,
+        'cpc': 0,
+        'cplc': 0,
+        'ctr': 0,
+        'lctr': 0,         # Website CTR
+        'frequency': 0,
+        'conversion_rate': 0
+    })
+    
+    def col_fallback(row, names, default=0):
+        for n in names:
+            for k in row.keys():
+                if k.strip().lower() == n.strip().lower():
+                    return row[k]
+        return default
+    
+    print(f"[DEBUG] aggregate_age_gender_enhanced: processing {len(sheet_data)} rows")
+    
+    for r in sheet_data:
+        age = r.get('Age', 'Unknown')
+        gender = r.get('Gender', 'Unknown')
+        key = f"{age}|{gender}"
+        
+        # Core metrics
+        stats[key]['cost'] += safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))
+        stats[key]['impr'] += safe_float(col_fallback(r, ['impressions', 'Impressions', 'IMP', 'imp']))
+        stats[key]['reach'] += safe_float(col_fallback(r, ['reach', 'Reach']))
+        
+        # Frequency
+        freq_val = safe_float(col_fallback(r, ['frequency', 'Frequency']))
+        if freq_val > 0:
+            stats[key]['freq_sum'] += freq_val
+            stats[key]['freq_count'] += 1
+        
+        # Clicks
+        stats[key]['clicks'] += safe_float(col_fallback(r, ['all clicks', 'clicks all', 'All Clicks', 'Clicks all', 'clicks', 'Clicks']))
+        stats[key]['link'] += safe_float(col_fallback(r, ['link clicks', 'Link Clicks', 'link', 'Link']))
+        
+        # Leads
+        stats[key]['wa'] += safe_float(col_fallback(r, ['whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads']))
+        stats[key]['fb_leads'] += safe_float(col_fallback(r, ['on-facebook leads', 'On-Facebook Leads', 'Facebook Leads']))
+        stats[key]['lead_form'] += safe_float(col_fallback(r, ['lead form', 'Lead Form', 'LeadForm']))
+    
+    # Calculate derived metrics
+    for key, d in stats.items():
+        # Cost metrics
+        d['cpwa'] = (d['cost'] / d['wa']) if d['wa'] > 0 else 0
+        d['cpm'] = (d['cost'] / d['impr'] * 1000) if d['impr'] > 0 else 0
+        d['cpc'] = (d['cost'] / d['clicks']) if d['clicks'] > 0 else 0
+        d['cplc'] = (d['cost'] / d['link']) if d['link'] > 0 else 0
+        
+        # Rate metrics
+        d['ctr'] = (d['clicks'] / d['impr'] * 100) if d['impr'] > 0 else 0
+        d['lctr'] = (d['link'] / d['impr'] * 100) if d['impr'] > 0 else 0  # Website CTR
+        
+        # Frequency average
+        d['frequency'] = (d['freq_sum'] / d['freq_count']) if d['freq_count'] > 0 else 0
+        
+        # Conversion rate
+        total_leads = d['wa'] + d['fb_leads'] + d['lead_form']
+        d['conversion_rate'] = (total_leads / d['clicks'] * 100) if d['clicks'] > 0 else 0
+    
+    print(f"[DEBUG] aggregate_age_gender_enhanced: found {len(stats)} unique age|gender segments")
     return stats
 
 # Additive: agregasi tren CTR per bulan untuk setiap kombinasi age|gender
@@ -307,4 +551,101 @@ def aggregate_region(sheet_data):
         # Untuk simplicity, kita pakai total frequency yang sudah di-sum (bisa di-improve later)
     
     print(f"[DEBUG] aggregate_region: found {len(stats)} unique regions")
+    return stats
+
+# ADDITIVE: Enhanced aggregate_breakdown untuk support reach, frequency, CPM, CPC, CPLC, website CTR
+def aggregate_breakdown_enhanced(sheet_data, by="Ad set"):
+    """
+    Enhanced breakdown agregasi dengan metrik tambahan:
+    - Reach, Frequency
+    - CPM (Cost Per Mille), CPC (Cost Per Click), CPLC (Cost Per Link Click)
+    - Website CTR (Link CTR)
+    - Lead Form counts
+    - Facebook Leads counts
+    - Outbound clicks breakdown
+    
+    ADDITIVE: Tidak menghapus aggregate_breakdown lama, ini versi enhanced
+    """
+    stats = defaultdict(lambda: {
+        'cost': 0,
+        'wa': 0,           # WhatsApp leads
+        'fb_leads': 0,     # Facebook leads
+        'lead_form': 0,    # Lead Form
+        'impr': 0,         # Impressions
+        'reach': 0,        # Reach
+        'freq_sum': 0,     # Frequency sum (for averaging)
+        'freq_count': 0,   # Frequency count (for averaging)
+        'clicks': 0,       # All clicks
+        'link': 0,         # Link clicks
+        'outbound_wa': 0,  # WhatsApp outbound clicks
+        'outbound_web': 0, # Website outbound clicks
+        'outbound_msg': 0, # Messaging outbound clicks
+        # Derived metrics (calculated later)
+        'cpwa': 0,         # Cost Per WhatsApp Lead
+        'cpm': 0,          # Cost Per Mille (1000 impressions)
+        'cpc': 0,          # Cost Per Click
+        'cplc': 0,         # Cost Per Link Click
+        'ctr': 0,          # Click Through Rate
+        'lctr': 0,         # Link Click Through Rate (Website CTR)
+        'frequency': 0,    # Average frequency
+        'conversion_rate': 0  # Leads / Clicks ratio
+    })
+    
+    def col_fallback(row, names, default=0):
+        for n in names:
+            for k in row.keys():
+                if k.strip().lower() == n.strip().lower():
+                    return row[k]
+        return default
+    
+    print(f"[DEBUG] aggregate_breakdown_enhanced: processing {len(sheet_data)} rows, grouping by '{by}'")
+    
+    for r in sheet_data:
+        key = r.get(by, r.get(by.title(), r.get(by.lower(), 'Unknown')))
+        
+        # Core metrics
+        stats[key]['cost'] += safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))
+        stats[key]['impr'] += safe_float(col_fallback(r, ['impressions', 'Impressions', 'IMP', 'imp']))
+        stats[key]['reach'] += safe_float(col_fallback(r, ['reach', 'Reach']))
+        
+        # Frequency (untuk averaging)
+        freq_val = safe_float(col_fallback(r, ['frequency', 'Frequency']))
+        if freq_val > 0:
+            stats[key]['freq_sum'] += freq_val
+            stats[key]['freq_count'] += 1
+        
+        # Clicks
+        stats[key]['clicks'] += safe_float(col_fallback(r, ['all clicks', 'clicks all', 'All Clicks', 'Clicks all', 'clicks', 'Clicks']))
+        stats[key]['link'] += safe_float(col_fallback(r, ['link clicks', 'Link Clicks', 'link', 'Link']))
+        
+        # Leads
+        stats[key]['wa'] += safe_float(col_fallback(r, ['whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads']))
+        stats[key]['fb_leads'] += safe_float(col_fallback(r, ['on-facebook leads', 'On-Facebook Leads', 'Facebook Leads']))
+        stats[key]['lead_form'] += safe_float(col_fallback(r, ['lead form', 'Lead Form', 'LeadForm']))
+        
+        # Outbound clicks breakdown
+        stats[key]['outbound_wa'] += safe_float(col_fallback(r, ['outbound clicks - whatsapp', 'Outbound Clicks - WhatsApp', 'whatsapp clicks']))
+        stats[key]['outbound_web'] += safe_float(col_fallback(r, ['outbound clicks - website', 'Outbound Clicks - Website', 'website clicks']))
+        stats[key]['outbound_msg'] += safe_float(col_fallback(r, ['outbound clicks - messaging', 'Outbound Clicks - Messaging']))
+    
+    # Calculate derived metrics
+    for key, d in stats.items():
+        # Cost metrics
+        d['cpwa'] = (d['cost'] / d['wa']) if d['wa'] > 0 else 0
+        d['cpm'] = (d['cost'] / d['impr'] * 1000) if d['impr'] > 0 else 0
+        d['cpc'] = (d['cost'] / d['clicks']) if d['clicks'] > 0 else 0
+        d['cplc'] = (d['cost'] / d['link']) if d['link'] > 0 else 0
+        
+        # Rate metrics
+        d['ctr'] = (d['clicks'] / d['impr'] * 100) if d['impr'] > 0 else 0
+        d['lctr'] = (d['link'] / d['impr'] * 100) if d['impr'] > 0 else 0  # Website CTR
+        
+        # Frequency average
+        d['frequency'] = (d['freq_sum'] / d['freq_count']) if d['freq_count'] > 0 else 0
+        
+        # Conversion rate (total leads / clicks)
+        total_leads = d['wa'] + d['fb_leads'] + d['lead_form']
+        d['conversion_rate'] = (total_leads / d['clicks'] * 100) if d['clicks'] > 0 else 0
+    
+    print(f"[DEBUG] aggregate_breakdown_enhanced: found {len(stats)} unique values for '{by}'")
     return stats
