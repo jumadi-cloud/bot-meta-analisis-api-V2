@@ -644,6 +644,25 @@ def node_llm_summary(state: AggregationState):
     else:
         print(f"[DEBUG] LLM_SUMMARY: age_gender breakdown NOT available or empty")
     
+    # ADDITIVE: Include age-gender ENHANCED breakdown dengan CPM, CPC, CPLC, Reach, Frequency, Conversion Rate
+    age_gender_enhanced = getattr(state, 'age_gender_enhanced', None)
+    if age_gender_enhanced and isinstance(age_gender_enhanced, dict) and len(age_gender_enhanced) > 0:
+        print(f"[DEBUG] LLM_SUMMARY: age_gender_enhanced tersedia dengan {len(age_gender_enhanced)} segmen")
+        ag_enh_summary = "\n\nEnhanced Age & Gender Metrics (CPM, CPC, CPLC, Reach, Frequency, Conversion Rate):\n"
+        # Sort by cost descending
+        sorted_ag_enh = sorted(age_gender_enhanced.items(), key=lambda x: x[1].get('cost', 0), reverse=True)
+        for key, m in sorted_ag_enh[:20]:  # Limit 20 segmen
+            ag_enh_summary += (
+                f"  - {key}: Reach={m.get('reach', 0):.0f}, Frequency={m.get('frequency', 0):.2f}, "
+                f"CPM={m.get('cpm', 0):.0f}, CPC={m.get('cpc', 0):.0f}, CPLC={m.get('cplc', 0):.0f}, "
+                f"Conv Rate={m.get('conversion_rate', 0):.2f}%, FB Leads={m.get('fb_leads', 0):.0f}, "
+                f"Lead Form={m.get('lead_form', 0):.0f}\n"
+            )
+        full_summary += ag_enh_summary
+        print(f"[DEBUG] LLM_SUMMARY: age_gender_enhanced added to context")
+    else:
+        print(f"[DEBUG] LLM_SUMMARY: age_gender_enhanced NOT available or empty")
+    
     # ADDITIVE: Include region breakdown jika tersedia
     region_breakdown = getattr(state, 'region_breakdown', None)
     if region_breakdown and isinstance(region_breakdown, dict) and len(region_breakdown) > 0:
@@ -666,6 +685,78 @@ def node_llm_summary(state: AggregationState):
         print(f"[DEBUG] LLM_SUMMARY: region breakdown added to context ({len(sorted_regions)} regions total)")
     else:
         print(f"[DEBUG] LLM_SUMMARY: region breakdown NOT available or empty")
+    
+    # ADDITIVE: Include breakdown adset/ad ENHANCED dengan full metrics
+    breakdown_adset_enhanced = getattr(state, 'breakdown_adset_enhanced', None)
+    if breakdown_adset_enhanced and isinstance(breakdown_adset_enhanced, dict) and len(breakdown_adset_enhanced) > 0:
+        print(f"[DEBUG] LLM_SUMMARY: breakdown_adset_enhanced tersedia dengan {len(breakdown_adset_enhanced)} adsets")
+        adset_enh_summary = "\n\nEnhanced Adset Breakdown (Full Metrics):\n"
+        sorted_adsets = sorted(breakdown_adset_enhanced.items(), key=lambda x: x[1].get('cost', 0), reverse=True)
+        for adset, m in sorted_adsets[:15]:  # Limit 15 adsets
+            adset_enh_summary += (
+                f"  - {adset}: Cost={m.get('cost', 0):.0f}, Reach={m.get('reach', 0):.0f}, Freq={m.get('frequency', 0):.2f}, "
+                f"CPM={m.get('cpm', 0):.0f}, CPC={m.get('cpc', 0):.0f}, CPLC={m.get('cplc', 0):.0f}, "
+                f"CTR={m.get('ctr', 0):.2f}%, LCTR={m.get('lctr', 0):.2f}%, Conv Rate={m.get('conversion_rate', 0):.2f}%\n"
+            )
+        full_summary += adset_enh_summary
+        print(f"[DEBUG] LLM_SUMMARY: breakdown_adset_enhanced added to context")
+    else:
+        print(f"[DEBUG] LLM_SUMMARY: breakdown_adset_enhanced NOT available")
+    
+    # ADDITIVE: Include outbound clicks proportion analysis
+    outbound_clicks = getattr(state, 'outbound_clicks', None)
+    if outbound_clicks and isinstance(outbound_clicks, dict):
+        total_outbound = outbound_clicks.get('total', 0)
+        if total_outbound > 0:
+            print(f"[DEBUG] LLM_SUMMARY: outbound_clicks tersedia, total={total_outbound}")
+            outbound_summary = "\n\nOutbound Clicks Channel Breakdown:\n"
+            prop = outbound_clicks.get('proportion', {})
+            outbound_summary += (
+                f"  - Total Outbound Clicks: {total_outbound:.0f}\n"
+                f"  - WhatsApp: {outbound_clicks.get('whatsapp', 0):.0f} ({prop.get('whatsapp', 0):.1f}%)\n"
+                f"  - Website: {outbound_clicks.get('website', 0):.0f} ({prop.get('website', 0):.1f}%)\n"
+                f"  - Messaging: {outbound_clicks.get('messaging', 0):.0f} ({prop.get('messaging', 0):.1f}%)\n"
+                f"  - Form: {outbound_clicks.get('form', 0):.0f} ({prop.get('form', 0):.1f}%)\n"
+            )
+            full_summary += outbound_summary
+            print(f"[DEBUG] LLM_SUMMARY: outbound_clicks added to context")
+        else:
+            print(f"[DEBUG] LLM_SUMMARY: outbound_clicks total is 0, skipping")
+    else:
+        print(f"[DEBUG] LLM_SUMMARY: outbound_clicks NOT available")
+    
+    # ADDITIVE: Include period stats (weekly/monthly) untuk tren temporal
+    period_stats_weekly = getattr(state, 'period_stats_weekly', None)
+    if period_stats_weekly and isinstance(period_stats_weekly, dict) and len(period_stats_weekly) > 0:
+        print(f"[DEBUG] LLM_SUMMARY: period_stats_weekly tersedia dengan {len(period_stats_weekly)} weeks")
+        weekly_summary = "\n\nWeekly Performance Trend (Top 8 Recent Weeks):\n"
+        # Sort by period (week) descending untuk show recent weeks first
+        sorted_weeks = sorted(period_stats_weekly.items(), key=lambda x: x[0], reverse=True)[:8]
+        for week, m in sorted_weeks:
+            weekly_summary += (
+                f"  - {week}: Cost={m.get('cost', 0):.0f}, Reach={m.get('reach', 0):.0f}, "
+                f"CPM={m.get('cpm', 0):.0f}, CTR={m.get('ctr', 0):.2f}%, Conv Rate={m.get('conversion_rate', 0):.2f}%\n"
+            )
+        full_summary += weekly_summary
+        print(f"[DEBUG] LLM_SUMMARY: period_stats_weekly added to context")
+    else:
+        print(f"[DEBUG] LLM_SUMMARY: period_stats_weekly NOT available or empty")
+    
+    period_stats_monthly = getattr(state, 'period_stats_monthly', None)
+    if period_stats_monthly and isinstance(period_stats_monthly, dict) and len(period_stats_monthly) > 0:
+        print(f"[DEBUG] LLM_SUMMARY: period_stats_monthly tersedia dengan {len(period_stats_monthly)} months")
+        monthly_summary = "\n\nMonthly Performance Trend (Top 6 Recent Months):\n"
+        # Sort by period (month) descending
+        sorted_months = sorted(period_stats_monthly.items(), key=lambda x: x[0], reverse=True)[:6]
+        for month, m in sorted_months:
+            monthly_summary += (
+                f"  - {month}: Cost={m.get('cost', 0):.0f}, Reach={m.get('reach', 0):.0f}, "
+                f"CPM={m.get('cpm', 0):.0f}, CTR={m.get('ctr', 0):.2f}%, Conv Rate={m.get('conversion_rate', 0):.2f}%\n"
+            )
+        full_summary += monthly_summary
+        print(f"[DEBUG] LLM_SUMMARY: period_stats_monthly added to context")
+    else:
+        print(f"[DEBUG] LLM_SUMMARY: period_stats_monthly NOT available or empty")
     
     question = getattr(state, 'question', 'Berapa total cost dan leads bulan ini?')
     llm_answer = llm_summarize_aggregation(full_summary, question)
