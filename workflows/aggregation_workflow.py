@@ -420,6 +420,20 @@ def node_llm_summary(state: AggregationState):
         # ...existing code...
     # Debug intent dan bulan_list
     print(f"[DEBUG] node_llm_summary intent: {getattr(state, 'intent', None)} | bulan_list: {getattr(state, 'bulan_list', None)}")
+    print(f"[DEBUG] node_llm_summary monthly_stats keys: {list(getattr(state, 'monthly_stats', {}).keys())}")
+    
+    # ADDITIVE SAFETY: If intent is tanya_bulan but monthly_stats is empty, provide fallback message
+    if getattr(state, 'intent', None) == 'tanya_bulan':
+        monthly_stats = getattr(state, 'monthly_stats', {})
+        if not monthly_stats or len(monthly_stats) == 0:
+            print("[WARN] Intent tanya_bulan but monthly_stats is empty - providing fallback message")
+            fallback_msg = (
+                "Maaf, saya tidak dapat menemukan data bulan pada dataset Anda. "
+                "Pastikan kolom 'Date' atau 'Tanggal' tersedia dan berformat yang benar (YYYY-MM-DD atau DD/MM/YYYY). "
+                "Atau coba tanyakan informasi lain seperti 'Apa saja worksheet yang tersedia?'"
+            )
+            return state.copy(update={"llm_answer": fallback_msg})
+    
     # Jika intent tanya_bulan, cek apakah pertanyaan user minta total leads/metrik spesifik untuk bulan tertentu
     if getattr(state, 'intent', None) == 'tanya_bulan' and getattr(state, 'bulan_list', None):
         import re, calendar
