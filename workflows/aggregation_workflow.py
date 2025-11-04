@@ -14,7 +14,12 @@ from services.aggregation import (
     aggregate_breakdown,
     aggregate_age_gender,
     aggregate_age_gender_monthly,
-    aggregate_region  # ADDITIVE: Region breakdown
+    aggregate_region,  # ADDITIVE: Region breakdown
+    # ADDITIVE: Enhanced aggregation functions
+    aggregate_breakdown_enhanced,
+    aggregate_age_gender_enhanced,
+    aggregate_by_period_enhanced,
+    aggregate_outbound_clicks
 )
 
 # Move AggregationState class definition to the top so all functions can reference it
@@ -33,6 +38,14 @@ class AggregationState(BaseModel):
     bulan_list: list = None  # New: extracted unique months if relevant
     trend_months: int = 0  # Jumlah bulan untuk analisis tren (jika ada)
     monthly_stats: dict = None  # Hasil agregasi bulanan
+    # ADDITIVE: Enhanced aggregation results
+    breakdown_adset_enhanced: dict = None  # Enhanced adset breakdown
+    breakdown_ad_enhanced: dict = None     # Enhanced ad breakdown
+    age_gender_enhanced: dict = None       # Enhanced age & gender
+    period_stats_daily: dict = None        # Daily stats with full metrics
+    period_stats_weekly: dict = None       # Weekly stats with full metrics
+    period_stats_monthly: dict = None      # Monthly stats with full metrics
+    outbound_clicks: dict = None           # Outbound clicks breakdown
     sorted_months: list = None  # Urutan bulan hasil agregasi
     adsets_by_sheet: dict = None  # New: hasil ekstraksi ad set per sheet
 
