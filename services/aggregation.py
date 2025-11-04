@@ -1,3 +1,11 @@
+"""
+services/aggregation.py
+Modul untuk fungsi-fungsi agregasi dan summary data campaign.
+"""
+from collections import defaultdict
+from datetime import datetime
+import re
+
 # ============================================================================
 # HELPER: Safe column fallback (handles non-string column keys from Sheets)
 # ============================================================================
@@ -11,46 +19,6 @@ def col_fallback(row, names, default=0):
             if str(k).strip().lower() == n.strip().lower():
                 return row[k]
     return default
-
-# ============================================================================
-# AGGREGATE FUNCTIONS
-# ============================================================================
-
-# Additive: Breakdown metrik utama per worksheet di semua file
-def aggregate_metrics_by_worksheet(sheet_data):
-    """
-    Mengembalikan dict: {(sheet_id, worksheet): {total_cost, total_impressions, ...}}
-    """
-    stats = defaultdict(lambda: {
-        'total_cost': 0,
-        'total_impressions': 0,
-        'total_clicks': 0,
-        'total_link_clicks': 0,
-        'total_leads_wa': 0,
-        'total_leads_fb': 0,
-        'total_lead_form': 0,
-        'total_msg_conv': 0
-    })
-
-    for r in sheet_data:
-        sheet_id = r.get('sheet_id', r.get('Sheet ID', 'Unknown'))
-        worksheet = r.get('worksheet', r.get('Worksheet', 'Unknown'))
-        key = (sheet_id, worksheet)
-        stats[key]['total_cost'] += safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))
-        stats[key]['total_impressions'] += safe_float(col_fallback(r, ['impressions', 'Impressions', 'IMP', 'imp']))
-        stats[key]['total_clicks'] += safe_float(col_fallback(r, ['all clicks', 'clicks all', 'All Clicks', 'Clicks all', 'clicks', 'Clicks']))
-        stats[key]['total_link_clicks'] += safe_float(col_fallback(r, ['link clicks', 'Link Clicks', 'link', 'Link']))
-        stats[key]['total_leads_wa'] += safe_float(col_fallback(r, ['whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads']))
-        stats[key]['total_leads_fb'] += safe_float(col_fallback(r, ['on-facebook leads', 'On-Facebook Leads']))
-        stats[key]['total_lead_form'] += safe_float(col_fallback(r, ['lead form', 'Lead Form']))
-        stats[key]['total_msg_conv'] += safe_float(col_fallback(r, ['messaging conversations started', 'Messaging Conversations Started']))
-    return stats
-"""
-services/aggregation.py
-Modul untuk fungsi-fungsi agregasi dan summary data campaign.
-"""
-from collections import defaultdict
-from datetime import datetime
 
 # Mapping nama bulan Indonesia & Inggris ke angka bulan
 MONTH_NAME_MAP = {
@@ -67,7 +35,6 @@ MONTH_NAME_MAP = {
     'november': 11, 'nov': 11,
     'december': 12, 'dec': 12, 'desember': 12, 'des': 12
 }
-import re
 
 def safe_float(val):
     try:
@@ -118,6 +85,39 @@ def safe_float(val):
         return float(num)
     except:
         return 0.0
+
+# ============================================================================
+# ADDITIVE: Restore aggregate_metrics_by_worksheet (was accidentally removed)
+# ============================================================================
+def aggregate_metrics_by_worksheet(sheet_data):
+    """
+    Mengembalikan dict: {(sheet_id, worksheet): {total_cost, total_impressions, ...}}
+    ADDITIVE: Function ini digunakan di chat_routes.py line 990, tidak boleh dihapus!
+    """
+    stats = defaultdict(lambda: {
+        'total_cost': 0,
+        'total_impressions': 0,
+        'total_clicks': 0,
+        'total_link_clicks': 0,
+        'total_leads_wa': 0,
+        'total_leads_fb': 0,
+        'total_lead_form': 0,
+        'total_msg_conv': 0
+    })
+
+    for r in sheet_data:
+        sheet_id = r.get('sheet_id', r.get('Sheet ID', 'Unknown'))
+        worksheet = r.get('worksheet', r.get('Worksheet', 'Unknown'))
+        key = (sheet_id, worksheet)
+        stats[key]['total_cost'] += safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))
+        stats[key]['total_impressions'] += safe_float(col_fallback(r, ['impressions', 'Impressions', 'IMP', 'imp']))
+        stats[key]['total_clicks'] += safe_float(col_fallback(r, ['all clicks', 'clicks all', 'All Clicks', 'Clicks all', 'clicks', 'Clicks']))
+        stats[key]['total_link_clicks'] += safe_float(col_fallback(r, ['link clicks', 'Link Clicks', 'link', 'Link']))
+        stats[key]['total_leads_wa'] += safe_float(col_fallback(r, ['whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads']))
+        stats[key]['total_leads_fb'] += safe_float(col_fallback(r, ['on-facebook leads', 'On-Facebook Leads']))
+        stats[key]['total_lead_form'] += safe_float(col_fallback(r, ['lead form', 'Lead Form']))
+        stats[key]['total_msg_conv'] += safe_float(col_fallback(r, ['messaging conversations started', 'Messaging Conversations Started']))
+    return stats
 
 def aggregate_main_metrics(sheet_data):
     """Hitung total cost, impressions, clicks, link clicks, leads, dsb."""
