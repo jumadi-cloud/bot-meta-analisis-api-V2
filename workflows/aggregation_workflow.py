@@ -87,6 +87,11 @@ def node_breakdown_adset(state: AggregationState):
     return state.copy(update={"breakdown_adset": aggregate_breakdown(state.sheet_data, by="Ad set"), "question": state.question})
 
 def node_breakdown_ad(state: AggregationState):
+    # ADDITIVE: Skip old ad breakdown for large datasets (performance optimization)
+    # Enhanced version is more useful and will also be skipped
+    if len(state.sheet_data) > 5000:
+        print(f"[DEBUG] node_breakdown_ad: SKIPPED - dataset too large ({len(state.sheet_data)} rows)")
+        return state.copy(update={"breakdown_ad": {}, "question": state.question})
     return state.copy(update={"breakdown_ad": aggregate_breakdown(state.sheet_data, by="Ad"), "question": state.question})
 
 def node_age_gender(state: AggregationState):
@@ -110,6 +115,13 @@ def node_breakdown_adset_enhanced(state: AggregationState):
 def node_breakdown_ad_enhanced(state: AggregationState):
     """Enhanced ad breakdown dengan metrik lengkap"""
     print("[DEBUG] node_breakdown_ad_enhanced: executing")
+    # ADDITIVE: Skip ad-level aggregation for large datasets (performance optimization)
+    # Ad-level creates 100+ unique keys for large datasets, causing timeout
+    # Adset-level aggregation is usually sufficient and much faster
+    if len(state.sheet_data) > 5000:
+        print(f"[DEBUG] node_breakdown_ad_enhanced: SKIPPED - dataset too large ({len(state.sheet_data)} rows), ad-level aggregation disabled for performance")
+        return state.copy(update={"breakdown_ad_enhanced": {}, "question": state.question})
+    
     data = aggregate_breakdown_enhanced(state.sheet_data, by="Ad")
     print(f"[DEBUG] node_breakdown_ad_enhanced: aggregated {len(data)} ads")
     return state.copy(update={"breakdown_ad_enhanced": data, "question": state.question})
