@@ -434,7 +434,6 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
-                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
         
@@ -501,7 +500,6 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
-                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
         else:
@@ -630,7 +628,6 @@ def chat():
                     "session_id": session_id,
                     "chat_history": chat_history,
                     "llm_answer": llm_answer,
-                    "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                     "worksheet_row_meta": worksheet_row_meta
                 })
             # User sudah menyebut worksheet, data sudah di-filter, lanjut ke analisis (logic di bawah akan handle)
@@ -657,7 +654,6 @@ def chat():
                     "session_id": session_id,
                     "chat_history": chat_history,
                     "llm_answer": llm_answer,
-                    "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                     "worksheet_row_meta": worksheet_row_meta
                 })
     
@@ -737,7 +733,6 @@ def chat():
             "session_id": session_id,
             "chat_history": chat_history,
             "llm_answer": llm_answer,
-            "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
             "worksheet_row_meta": worksheet_row_meta
         })
     
@@ -770,7 +765,6 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
-                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
     
@@ -860,7 +854,6 @@ def chat():
                     "session_id": session_id,
                     "chat_history": chat_history,
                     "llm_answer": llm_answer,
-                    "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                     "worksheet_row_meta": worksheet_row_meta
                 })
             worksheet_columns = {}
@@ -906,41 +899,14 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
-                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
     # END of if/else block for sheet_data loading
     # Workflow execution runs REGARDLESS of reload or already loaded (ADDITIVE FIX - moved outside else block)
     
     from workflows.aggregation_workflow import run_aggregation_workflow
-    try:
-        print(f'[DEBUG] Running aggregation workflow with {len(sheet_data)} rows and question: {user_prompt}')
-        workflow_result = run_aggregation_workflow(sheet_data, question=user_prompt)
-        llm_answer = workflow_result.get("llm_answer")
-        print(f'[DEBUG] Workflow completed successfully, llm_answer length: {len(llm_answer) if llm_answer else 0}')
-    except Exception as workflow_error:
-        print(f'[ERROR] Workflow execution failed: {workflow_error}')
-        import traceback
-        traceback.print_exc()
-        error_msg = f"Maaf, terjadi kesalahan saat memproses data Anda. Error: {str(workflow_error)}"
-        try:
-            add_history(session_id, "LLM", error_msg)
-        except Exception as e:
-            print('WARNING: Gagal simpan error chat ke chat_history.db:', e)
-        chat_history = []
-        try:
-            chat_history = get_history_db(session_id)
-        except Exception as e:
-            print('WARNING: Gagal ambil chat history:', e)
-        return jsonify({
-            "success": False,
-            "session_id": session_id,
-            "chat_history": chat_history,
-            "llm_answer": error_msg,
-            "output": error_msg,  # ADDITIVE: Laravel expects 'output' key
-            "worksheet_row_meta": worksheet_row_meta,
-            "error": str(workflow_error)
-        })
+    workflow_result = run_aggregation_workflow(sheet_data, question=user_prompt)
+    llm_answer = workflow_result.get("llm_answer")
 
     worksheet_intent_kw = [
         "jumlah baris", "struktur worksheet", "struktur tab", "struktur data", "jumlah data per worksheet", "jumlah data per tab", "jumlah data per sheet", "jumlah baris per worksheet", "jumlah baris per tab",

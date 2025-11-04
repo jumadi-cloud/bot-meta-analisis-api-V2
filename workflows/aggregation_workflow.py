@@ -274,20 +274,34 @@ def node_aggregate_monthly(state: AggregationState):
                             break
                     except Exception:
                         pass
-            except Exception:
+            except Exception as parse_err:
+                print(f"[DEBUG] Failed to parse date from row {idx}, key {k}, val {val}: {parse_err}")
                 continue
 
         if tgl:
-            key = (tgl.year, tgl.month)
-            monthly_stats[key]['cost'] += clean_number(row.get('Cost', 0))
-            # Coba beberapa kemungkinan kolom leads
-            leads = row.get('WhatsApp') or row.get('On-Facebook Leads') or row.get('Lead Form') or row.get('Messaging Conversations Started') or 0
-            monthly_stats[key]['leads'] += int(clean_number(leads))
-            clicks = row.get('All Clicks') or row.get('Clicks all') or row.get('Link Clicks') or 0
-            monthly_stats[key]['clicks'] += int(clean_number(clicks))
-            # Debug: hitung entry per bulan
-            debug_monthly.setdefault(key, 0)
-            debug_monthly[key] += 1
+            try:
+                key = (tgl.year, tgl.month)
+                monthly_stats[key]['cost'] += clean_number(row.get('Cost', 0))
+                # Coba beberapa kemungkinan kolom leads dengan safe get
+                leads_val = 0
+                for lead_col in ['WhatsApp', 'On-Facebook Leads', 'Lead Form', 'Messaging Conversations Started']:
+                    if row.get(lead_col):
+                        leads_val += clean_number(row.get(lead_col, 0))
+                monthly_stats[key]['leads'] += int(leads_val)
+                
+                # Clicks dengan safe fallback
+                clicks_val = 0
+                for click_col in ['All Clicks', 'Clicks all', 'Link Clicks', 'link clicks']:
+                    if row.get(click_col):
+                        clicks_val += clean_number(row.get(click_col, 0))
+                monthly_stats[key]['clicks'] += int(clicks_val)
+                
+                # Debug: hitung entry per bulan
+                debug_monthly.setdefault(key, 0)
+                debug_monthly[key] += 1
+            except Exception as agg_err:
+                print(f"[DEBUG] Failed to aggregate row {idx}: {agg_err}")
+                debug_failed_rows.append((idx, row))
         else:
             debug_failed_rows.append((idx, row))
 
