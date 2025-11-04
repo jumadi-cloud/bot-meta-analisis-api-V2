@@ -124,6 +124,13 @@ def node_age_gender_enhanced(state: AggregationState):
 def node_period_daily(state: AggregationState):
     """Daily aggregation dengan metrik lengkap"""
     print("[DEBUG] node_period_daily: executing")
+    # ADDITIVE: Skip daily aggregation if dataset too large (performance optimization for production)
+    # Daily creates too many unique keys for large datasets, causing timeout/OOM
+    # Preserved for small datasets or specific use cases
+    if len(state.sheet_data) > 5000:
+        print(f"[DEBUG] node_period_daily: SKIPPED - dataset too large ({len(state.sheet_data)} rows), daily aggregation disabled for performance")
+        return state.copy(update={"period_stats_daily": {}, "question": state.question})
+    
     data = aggregate_by_period_enhanced(state.sheet_data, period='daily')
     print(f"[DEBUG] node_period_daily: aggregated {len(data)} days")
     return state.copy(update={"period_stats_daily": data, "question": state.question})

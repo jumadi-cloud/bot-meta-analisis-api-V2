@@ -199,7 +199,9 @@ def aggregate_by_period_enhanced(sheet_data, period='daily'):
     def col_fallback(row, names, default=0):
         for n in names:
             for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
+                # ADDITIVE: Safety check - ensure k is string before strip/lower
+                k_str = str(k) if k is not None else ""
+                if k_str.strip().lower() == n.strip().lower():
                     return row[k]
         return default
     
