@@ -1,0 +1,22 @@
+flask
+flask-cors
+python-dotenv
+gspread
+google-auth
+langchain-google-genai
+chromadb
+langchain-community
+flask
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+python-dotenv
+langchain-google-genai
+gunicorn
+langgraph
+
+# Tambahan untuk fitur chart/visualisasi
+plotly
+kaleido
+pandas

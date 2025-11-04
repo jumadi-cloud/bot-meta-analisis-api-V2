@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Agent RAG Architecture Diagram</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#6366f1',
+            secondary: '#f472b6',
+            accent: '#34d399',
+            dark: '#1e293b',
+            light: '#f1f5f9',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-light min-h-screen flex flex-col items-center py-10">
+  <h1 class="text-3xl font-bold text-primary mb-8">AI Agent RAG Architecture</h1>
+    <!-- Modern Vertical Diagram -->
+    <div class="w-full max-w-xl flex flex-col items-center bg-white rounded-xl shadow-lg p-8">
+      <!-- Google Sheet -->
+      <div class="flex flex-col items-center">
+        <div class="bg-accent text-white px-6 py-2 rounded-lg shadow font-semibold">Google Sheet (Data Source)</div>
+        <div class="text-xs text-gray-500 mt-1 mb-2">(Realtime Data)</div>
+      </div>
+      <!-- Arrow -->
+      <svg height="40" width="24" class="my-0"><line x1="12" y1="0" x2="12" y2="40" stroke="#34d399" stroke-width="3" marker-end="url(#arrowhead)"/></svg>
+      <!-- Backend API -->
+      <div class="flex flex-col items-center">
+        <div class="bg-primary text-white px-8 py-3 rounded-lg shadow-lg font-bold">Flask API (Python)</div>
+        <div class="flex flex-row gap-4 mt-2">
+          <div class="bg-light border border-primary px-4 py-2 rounded shadow text-xs">gspread<br><span class="text-primary">Google Sheet API</span></div>
+          <div class="bg-light border border-primary px-4 py-2 rounded shadow text-xs">dotenv<br><span class="text-primary">Env Management</span></div>
+        </div>
+      </div>
+      <svg height="40" width="24" class="my-0"><line x1="12" y1="0" x2="12" y2="40" stroke="#6366f1" stroke-width="3" marker-end="url(#arrowhead)"/></svg>
+      <!-- RAG Pipeline -->
+      <div class="flex flex-col items-center">
+        <div class="bg-secondary text-white px-8 py-3 rounded-lg shadow-lg font-bold">RAG Pipeline</div>
+        <div class="flex flex-row gap-4 mt-2">
+          <div class="bg-light border border-secondary px-4 py-2 rounded shadow text-xs">ChromaDB<br><span class="text-secondary">Vector Store</span></div>
+          <div class="bg-light border border-secondary px-4 py-2 rounded shadow text-xs">LangChain<br><span class="text-secondary">LLM Orchestration</span></div>
+          <div class="bg-light border border-secondary px-4 py-2 rounded shadow text-xs">sentence-transformers<br><span class="text-secondary">Embeddings</span></div>
+        </div>
+      </div>
+      <svg height="40" width="24" class="my-0"><line x1="12" y1="0" x2="12" y2="40" stroke="#f472b6" stroke-width="3" marker-end="url(#arrowhead)"/></svg>
+      <!-- LLM -->
+      <div class="flex flex-col items-center">
+        <div class="bg-dark text-white px-8 py-3 rounded-lg shadow-lg font-bold">LLM: Google Gemini (via LangChain)</div>
+        <div class="text-xs text-gray-400 mt-1">Prompt Engineering: Narasi Insight</div>
+      </div>
+      <svg height="40" width="24" class="my-0"><line x1="12" y1="0" x2="12" y2="40" stroke="#6366f1" stroke-width="3" marker-end="url(#arrowhead)"/></svg>
+      <!-- Frontend/API Client -->
+      <div class="flex flex-col items-center">
+        <div class="bg-primary text-white px-6 py-2 rounded-lg shadow font-semibold">Frontend / API Client</div>
+        <div class="text-xs text-gray-500 mt-1">(HTML+JS, Integrasi Platform Lain)</div>
+      </div>
+      <!-- SVG Arrowhead Defs -->
+      <svg width="0" height="0">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L10,5 L0,10 Z" fill="#6366f1" />
+          </marker>
+        </defs>
+      </svg>
+    </div>
+    <!-- Legend -->
+    <div class="mt-8 w-full max-w-2xl">
+      <h2 class="text-xl font-semibold mb-2 text-dark">Legend</h2>
+      <ul class="list-disc pl-6 text-gray-700 text-sm">
+        <li><span class="font-bold text-primary">Google Sheet</span>: Sumber data utama, diakses real-time via API.</li>
+        <li><span class="font-bold text-primary">Flask API</span>: Backend Python, handle request, filtering, agregasi, dan orchestrasi pipeline.</li>
+        <li><span class="font-bold text-secondary">RAG Pipeline</span>: Retrieval-Augmented Generation, menggabungkan vector store (ChromaDB), LLM, dan embeddings.</li>
+        <li><span class="font-bold text-dark">LLM: Gemini</span>: Model AI generatif, menghasilkan insight narasi berbasis data.</li>
+        <li><span class="font-bold text-primary">Frontend/API Client</span>: UI web atau integrasi ke platform lain.</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

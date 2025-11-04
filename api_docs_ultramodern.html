@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI analytics by Meson</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
+  <style>
+    body { font-family: 'Inter', sans-serif; transition: background 0.3s, color 0.3s; }
+    .sidebar { min-width: 250px; background: #fff; box-shadow: 2px 0 16px rgba(37,99,235,0.07); transition: left 0.3s, box-shadow 0.3s; position: relative; }
+    .sidebar-collapsed { left: -270px !important; box-shadow: none !important; }
+    .sidebar-toggle { display: none; }
+    .sidebar-backdrop { display: none; position: fixed; z-index: 39; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(30,41,59,0.45); transition: opacity 0.3s; }
+    .sidebar-open .sidebar-backdrop { display: block; }
+    .sidebar .menu-item { display: flex; align-items: center; gap: 0.7em; padding: 0.7em 1em; border-radius: 0.7em; font-weight: 500; transition: background 0.2s, color 0.2s; }
+    .sidebar .menu-item.active, .sidebar .menu-item:hover { background: #2563eb; color: #fff; }
+    .sidebar .menu-icon { width: 1.3em; height: 1.3em; opacity: 0.7; }
+    @media (max-width: 900px) {
+      .sidebar { position: fixed; z-index: 40; top: 0; left: 0; height: 100vh; left: 0; box-shadow: 2px 0 32px rgba(37,99,235,0.18); }
+      .sidebar.sidebar-collapsed { left: -270px !important; }
+      .sidebar-toggle { display: block; position: fixed; top: 1.5rem; left: 1.5rem; z-index: 50; background: #2563eb; color: #fff; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(37,99,235,0.13); }
+      .sidebar-backdrop { display: block; }
+    }
+    /* Prevent toggle and menu overlap on mobile */
+    .sidebar-menu-content { margin-top: 0; }
+    @media (max-width: 900px) {
+      .sidebar-menu-content { margin-top: 70px; }
+    }
+    .lang-switch { cursor: pointer; font-weight: bold; }
+    .active-lang { color: #2563eb; }
+    .dark-mode { background: #18181b; color: #f3f4f6; }
+    .dark-mode .sidebar { background: #23272f; }
+    .dark-mode pre { background: #23272f; }
+    .dark-toggle { cursor: pointer; }
+    .badge { background: #2563eb; color: #fff; border-radius: 0.25em; padding: 0.1em 0.5em; font-size: 0.8em; margin-left: 0.5em; }
+    .faq-q { font-weight: bold; margin-top: 1em; }
+    .faq-a { margin-bottom: 1em; }
+    .hero {
+      background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
+      color: #fff;
+      border-radius: 1.5rem;
+      box-shadow: 0 8px 32px rgba(37,99,235,0.15);
+      padding: 2.5rem 2rem 2rem 2rem;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      animation: fadeIn 1s;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-icon {
+      width: 90px; height: 90px; background: #fff2; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    }
+    .hero-bg-svg {
+      position: absolute; right: -60px; top: -40px; opacity: 0.25; z-index: 0;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-30px);} to { opacity: 1; transform: none; } }
+    .endpoint-card {
+      background: #f9fafb;
+      border-radius: 1rem;
+      box-shadow: 0 2px 8px rgba(37,99,235,0.07);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      transition: box-shadow 0.2s, transform 0.2s;
+      border: 1px solid #e5e7eb;
+      animation: fadeIn 0.7s;
+      position: relative;
+    }
+    .endpoint-card:hover { box-shadow: 0 4px 16px rgba(37,99,235,0.13); transform: translateY(-2px) scale(1.01); }
+    .copy-btn {
+      background: #2563eb; color: #fff; border-radius: 0.4em; padding: 0.1em 0.7em; font-size: 0.9em; margin-left: 0.5em; cursor: pointer; border: none;
+      transition: background 0.2s;
+      position: relative;
+    }
+    .copy-btn.copied::after {
+      content: 'Copied!';
+      position: absolute;
+      top: -2em;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2563eb;
+      color: #fff;
+      padding: 0.2em 0.7em;
+      border-radius: 0.4em;
+      font-size: 0.8em;
+      opacity: 1;
+      pointer-events: none;
+      animation: fadeOut 1.2s forwards;
+    }
+    @keyframes fadeOut { 0% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+    .live-tester {
+      background: #f3f4f6; border-radius: 1rem; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 2px 8px rgba(37,99,235,0.07);
+    }
+    .dark-mode .endpoint-card, .dark-mode .live-tester { background: #23272f; border-color: #374151; }
+    .dark-mode .hero { background: linear-gradient(90deg, #1e293b 0%, #2563eb 100%); color: #fff; }
+    .dark-mode .copy-btn { background: #374151; color: #fff; }
+    .dark-mode .copy-btn:hover { background: #2563eb; }
+    .footer {
+      text-align: center; color: #94a3b8; font-size: 0.95em; margin-top: 3rem; padding-bottom: 1.5rem;
+    }
+    .changelog, .contributors {
+      background: #f9fafb; border-radius: 1rem; padding: 1.5rem; margin-bottom: 2rem; box-shadow: 0 2px 8px rgba(37,99,235,0.07);
+    }
+    .dark-mode .changelog, .dark-mode .contributors { background: #23272f; }
+    .badge-status { background: #22c55e; color: #fff; border-radius: 0.25em; padding: 0.1em 0.5em; font-size: 0.8em; margin-left: 0.5em; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle Sidebar">
+    <svg width="28" height="28" fill="none" viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="2" rx="1" fill="currentColor"/><rect x="4" y="15" width="16" height="2" rx="1" fill="currentColor"/></svg>
+  </button>
+  <div class="flex min-h-screen relative" id="main-flex">
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+    <!-- Sidebar -->
+  <aside class="sidebar flex flex-col justify-between sticky top-0 h-screen" id="sidebar" tabindex="-1" aria-label="Sidebar Menu">
+      <div class="sidebar-menu-content">
+        <!-- <h2 class="text-xl font-bold mb-6 pl-2">Menu</h2> -->
+        <nav class="flex flex-col gap-1">
+          <a class="menu-item section-link active" href="#overview"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>Overview</a>
+          <a class="menu-item section-link" href="#getting-started"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7h18M3 12h18M3 17h18"/></svg>Getting Started</a>
+          <a class="menu-item section-link" href="#auth"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0 0V8m0 4h4m-4 0H8"/></svg>Authentication</a>
+          <a class="menu-item section-link" href="#endpoints"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M16 3v4M8 3v4"/></svg>Endpoints</a>
+          <a class="menu-item section-link" href="#params"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>Parameters</a>
+          <a class="menu-item section-link" href="#best"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>Best Practices</a>
+          <a class="menu-item section-link" href="#example"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>Example</a>
+          <a class="menu-item section-link" href="#faq"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 15h.01M12 15h.01M16 15h.01"/></svg>FAQ</a>
+          <a class="menu-item section-link" href="#changelog"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4l2-2h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z"/></svg>Changelog</a>
+          <a class="menu-item section-link" href="#contributors"><svg class="menu-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a7.5 7.5 0 0 1 13 0"/></svg>Contributors</a>
+        </nav>
+        <div class="mt-8 flex flex-col gap-2 pl-2">
+          <div>
+            <span class="lang-switch active-lang" id="lang-en">EN</span> |
+            <span class="lang-switch" id="lang-id">ID</span>
+          </div>
+          <button class="dark-toggle mt-2 px-3 py-1 rounded bg-gray-200 hover:bg-gray-300 text-sm" id="dark-toggle">🌙 Dark Mode</button>
+        </div>
+      </div>
+    </aside>
+    <!-- Main Content -->
+    <main class="flex-1 p-8 max-w-4xl mx-auto" id="main-content">
+      <div class="hero mb-8">
+        <div class="hero-icon">
+          <svg width="56" height="56" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#2563eb" opacity="0.2"/><path d="M12 6v6l4 2" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <h1 class="text-4xl font-bold mb-2">AI Agent RAG API <span class="badge-status">V1.1</span></h1>
+          <div class="text-lg">Powerful, flexible, and easy-to-use API for campaign analytics and chat automation.</div>
+        </div>
+        <svg class="hero-bg-svg" width="200" height="120" viewBox="0 0 200 120" fill="none"><ellipse cx="100" cy="60" rx="100" ry="60" fill="#fff" fill-opacity="0.15"/></svg>
+      </div>
+      <div id="doc-en">
+        <section id="overview">
+          <h2 class="text-2xl font-semibold mb-2">Overview</h2>
+          <p class="mb-4">This API provides access to an AI-powered agent for campaign analytics, chat, and data retrieval. It supports flexible queries, segmentation, and integration with Google Sheets.</p>
+        </section>
+        <section id="getting-started">
+          <h2 class="text-xl font-semibold mb-2">Getting Started</h2>
+          <ol class="list-decimal ml-6 mb-4">
+            <li>Clone the repository and install dependencies:<br>
+              <pre><code class="language-bash">git clone &lt;repo-url&gt;
+cd &lt;repo-folder&gt;
+pip install -r requirements.txt</code></pre>
+            </li>
+            <li>Copy <code>.env.example</code> to <code>.env</code> and fill in your credentials.</li>
+            <li>Run the app:<br>
+              <pre><code class="language-bash">python app.py</code></pre>
+            </li>
+          </ol>
+        </section>
+        <section id="auth">
+          <h2 class="text-xl font-semibold mb-2">Authentication</h2>
+          <p class="mb-4">Set your API keys and Google credentials in the <code>.env</code> file.</p>
+        </section>
+        <section id="endpoints">
+          <h2 class="text-xl font-semibold mb-2">Endpoints</h2>
+          <div class="endpoint-card">
+            <div class="flex items-center mb-2">
+              <span class="font-bold text-blue-600 mr-2">POST</span>
+              <span class="font-mono">/chat</span>
+              <button class="copy-btn ml-2" data-copy='{"message": "How many leads in September?", "session_id": "optional-session-id"}'>Copy Example</button>
+            </div>
+            <p>Send a chat message to the AI agent.</p>
+            <pre><code class="language-json">{
+  "message": "How many leads in September?",
+  "session_id": "optional-session-id"
+}</code></pre>
+            <p class="mt-2">Response:</p>
+            <pre><code class="language-json">{
+  "response": "There are 120 leads in September.",
+  "session_id": "..."
+}</code></pre>
+          </div>
+          <div class="endpoint-card">
+            <div class="flex items-center mb-2">
+              <span class="font-bold text-green-600 mr-2">GET</span>
+              <span class="font-mono">/history?session_id=your-session-id</span>
+              <button class="copy-btn ml-2" data-copy="/history?session_id=your-session-id">Copy Example</button>
+            </div>
+            <p>Retrieve chat history for a session.</p>
+            <pre><code class="language-bash">/history?session_id=your-session-id</code></pre>
+          </div>
+        </section>
+        <section class="live-tester mb-8">
+          <div class="flex items-center mb-4">
+            <img src="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f916.svg" alt="robot" style="width:40px;height:40px;margin-right:1rem;">
+            <h2 class="text-xl font-semibold">Live API Tester <span class="badge-status">Online</span></h2>
+          </div>
+          <div class="mb-2 text-sm text-blue-700">Endpoint: <a href="https://bot-meta-analisis-api.onrender.com/chat" class="underline" target="_blank">https://bot-meta-analisis-api.onrender.com/chat</a></div>
+          <form id="live-tester-form" onsubmit="event.preventDefault(); sendLiveRequest();">
+            <label class="block mb-2 font-semibold">Message:</label>
+            <input type="text" id="tester-message" class="border rounded px-3 py-2 w-full mb-2" placeholder="Type your message..." required />
+            <label class="block mb-2 font-semibold">Session ID (optional):</label>
+            <input type="text" id="tester-session" class="border rounded px-3 py-2 w-full mb-4" placeholder="Session ID" />
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Send</button>
+          </form>
+          <div id="live-response" class="mt-4 hidden">
+            <div class="font-semibold mb-1">Response:</div>
+            <pre><code class="language-json" id="live-response-json"></code></pre>
+          </div>
+        </section>
+        <section id="params">
+          <h2 class="text-xl font-semibold mb-2">Parameters</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li><b>message</b>: User's question or command (string, required)</li>
+            <li><b>session_id</b>: Session identifier (string, optional)</li>
+          </ul>
+        </section>
+        <section id="best">
+          <h2 class="text-xl font-semibold mb-2">Best Practices</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li>Use specific queries for better results.</li>
+            <li>Check your .env file for correct credentials.</li>
+            <li>Review server logs for troubleshooting.</li>
+          </ul>
+        </section>
+        <section id="example">
+          <h2 class="text-xl font-semibold mb-2">Example (Python)</h2>
+          <pre><code class="language-python">import requests
+resp = requests.post("https://bot-meta-analisis-api.onrender.com/chat", json={"message": "Leads in September?"})
+print(resp.json())</code></pre>
+        </section>
+        <section id="faq">
+          <h2 class="text-xl font-semibold mb-2">FAQ</h2>
+          <div class="faq-q">Q: How do I get my API key?</div>
+          <div class="faq-a">A: Register on the provider platform or contact your admin for credentials.</div>
+          <div class="faq-q">Q: Why do I get 401 Unauthorized?</div>
+          <div class="faq-a">A: Check your API key and .env configuration.</div>
+          <div class="faq-q">Q: Can I use this API for commercial projects?</div>
+          <div class="faq-a">A: Yes, as long as you comply with the license and terms.</div>
+        </section>
+        <section id="changelog" class="changelog">
+          <h2 class="text-xl font-semibold mb-2">Changelog</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li><b>v1.3</b> - Ultra modern UI, sidebar icons, EN/ID, live tester, copy feedback, contributors section</li>
+            <li><b>v1.2</b> - Ultra UI, live tester, sidebar collapse, copy feedback, contributors section</li>
+            <li><b>v1.1</b> - Interactive, dark mode, FAQ, syntax highlight</li>
+            <li><b>v1.0</b> - Initial release</li>
+          </ul>
+        </section>
+        <section id="contributors" class="contributors">
+          <h2 class="text-xl font-semibold mb-2">Contributors</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li>Adi Syahadi <span class="badge">Owner</span></li>
+            <li>GitHub Copilot <span class="badge">AI Assistant</span></li>
+          </ul>
+        </section>
+      </div>
+      <div id="doc-id" style="display:none">
+        <section id="overview">
+          <h2 class="text-2xl font-semibold mb-2">Gambaran Umum</h2>
+          <p class="mb-4">API ini menyediakan akses ke agen AI untuk analisis kampanye, chat, dan pengambilan data. Mendukung query fleksibel, segmentasi, dan integrasi Google Sheets.</p>
+        </section>
+        <section id="getting-started">
+          <h2 class="text-xl font-semibold mb-2">Cara Memulai</h2>
+          <ol class="list-decimal ml-6 mb-4">
+            <li>Clone repository dan install dependensi:<br>
+              <pre><code class="language-bash">git clone &lt;repo-url&gt;
+cd &lt;repo-folder&gt;
+pip install -r requirements.txt</code></pre>
+            </li>
+            <li>Salin <code>.env.example</code> menjadi <code>.env</code> lalu isi kredensial Anda.</li>
+            <li>Jalankan aplikasi:<br>
+              <pre><code class="language-bash">python app.py</code></pre>
+            </li>
+          </ol>
+        </section>
+        <section id="auth">
+          <h2 class="text-xl font-semibold mb-2">Autentikasi</h2>
+          <p class="mb-4">Set API key dan kredensial Google di file <code>.env</code>.</p>
+        </section>
+        <section id="endpoints">
+          <h2 class="text-xl font-semibold mb-2">Endpoint</h2>
+          <div class="endpoint-card">
+            <div class="flex items-center mb-2">
+              <span class="font-bold text-blue-600 mr-2">POST</span>
+              <span class="font-mono">/chat</span>
+              <button class="copy-btn ml-2" data-copy='{"message": "Berapa leads di bulan September?", "session_id": "opsional-session-id"}'>Copy Example</button>
+            </div>
+            <p>Kirim pesan chat ke agen AI.</p>
+            <pre><code class="language-json">{
+  "message": "Berapa leads di bulan September?",
+  "session_id": "opsional-session-id"
+}</code></pre>
+            <p class="mt-2">Respon:</p>
+            <pre><code class="language-json">{
+  "response": "Ada 120 leads di bulan September.",
+  "session_id": "..."
+}</code></pre>
+          </div>
+          <div class="endpoint-card">
+            <div class="flex items-center mb-2">
+              <span class="font-bold text-green-600 mr-2">GET</span>
+              <span class="font-mono">/history?session_id=your-session-id</span>
+              <button class="copy-btn ml-2" data-copy="/history?session_id=your-session-id">Copy Example</button>
+            </div>
+            <p>Ambil riwayat chat untuk sebuah sesi.</p>
+            <pre><code class="language-bash">/history?session_id=your-session-id</code></pre>
+          </div>
+        </section>
+        <section class="live-tester mb-8">
+          <div class="flex items-center mb-4">
+            <img src="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/1f916.svg" alt="robot" style="width:40px;height:40px;margin-right:1rem;">
+            <h2 class="text-xl font-semibold">Live API Tester <span class="badge-status">Online</span></h2>
+          </div>
+          <div class="mb-2 text-sm text-blue-700">Endpoint: <a href="https://bot-meta-analisis-api.onrender.com/chat" class="underline" target="_blank">https://bot-meta-analisis-api.onrender.com/chat</a></div>
+          <form id="live-tester-form-id" onsubmit="event.preventDefault(); sendLiveRequestID();">
+            <label class="block mb-2 font-semibold">Pesan:</label>
+            <input type="text" id="tester-message-id" class="border rounded px-3 py-2 w-full mb-2" placeholder="Tulis pesan Anda..." required />
+            <label class="block mb-2 font-semibold">Session ID (opsional):</label>
+            <input type="text" id="tester-session-id" class="border rounded px-3 py-2 w-full mb-4" placeholder="Session ID" />
+            <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Kirim</button>
+          </form>
+          <div id="live-response-id" class="mt-4 hidden">
+            <div class="font-semibold mb-1">Respon:</div>
+            <pre><code class="language-json" id="live-response-json-id"></code></pre>
+          </div>
+        </section>
+        <section id="params">
+          <h2 class="text-xl font-semibold mb-2">Parameter</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li><b>message</b>: Pertanyaan atau perintah user (string, wajib)</li>
+            <li><b>session_id</b>: ID sesi (string, opsional)</li>
+          </ul>
+        </section>
+        <section id="best">
+          <h2 class="text-xl font-semibold mb-2">Tips Penggunaan</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li>Gunakan query spesifik untuk hasil terbaik.</li>
+            <li>Pastikan file .env sudah benar.</li>
+            <li>Cek log server untuk troubleshooting.</li>
+          </ul>
+        </section>
+        <section id="example">
+          <h2 class="text-xl font-semibold mb-2">Contoh (Python)</h2>
+          <pre><code class="language-python">import requests
+resp = requests.post("https://bot-meta-analisis-api.onrender.com/chat", json={"message": "Leads di September?"})
+print(resp.json())</code></pre>
+        </section>
+        <section id="faq">
+          <h2 class="text-xl font-semibold mb-2">FAQ</h2>
+          <div class="faq-q">T: Bagaimana cara mendapatkan API key?</div>
+          <div class="faq-a">J: Daftar di platform penyedia atau hubungi admin Anda untuk kredensial.</div>
+          <div class="faq-q">T: Kenapa saya mendapat 401 Unauthorized?</div>
+          <div class="faq-a">J: Cek API key dan konfigurasi .env Anda.</div>
+          <div class="faq-q">T: Apakah API ini bisa untuk proyek komersial?</div>
+          <div class="faq-a">J: Bisa, selama mematuhi lisensi dan ketentuan yang berlaku.</div>
+        </section>
+        <section id="changelog" class="changelog">
+          <h2 class="text-xl font-semibold mb-2">Changelog</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li><b>v1.3</b> - Ultra modern UI, sidebar icons, EN/ID, live tester, copy feedback, contributors section</li>
+            <li><b>v1.2</b> - Ultra UI, live tester, sidebar collapse, copy feedback, contributors section</li>
+            <li><b>v1.1</b> - Interactive, dark mode, FAQ, syntax highlight</li>
+            <li><b>v1.0</b> - Initial release</li>
+          </ul>
+        </section>
+        <section id="contributors" class="contributors">
+          <h2 class="text-xl font-semibold mb-2">Kontributor</h2>
+          <ul class="list-disc ml-6 mb-4">
+            <li>Adi Syahadi <span class="badge">Owner</span></li>
+            <li>GitHub Copilot <span class="badge">AI Assistant</span></li>
+          </ul>
+        </section>
+      </div>
+      <footer class="footer">&copy; 2025 AI Agent RAG. Powered by <a href="https://github.com/AdiSyahadi/bot-meta-analisis-apiV2" class="underline">AdiSyahadi</a> & Copilot.</footer>
+    </main>
+  </div>
+  <script>
+    // Sidebar collapse for mobile with backdrop
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+    function openSidebar() {
+      sidebar.classList.remove('sidebar-collapsed');
+      document.body.classList.add('sidebar-open');
+      sidebar.focus();
+    }
+    function closeSidebar() {
+      sidebar.classList.add('sidebar-collapsed');
+      document.body.classList.remove('sidebar-open');
+    }
+    sidebarToggle.onclick = () => {
+      if (sidebar.classList.contains('sidebar-collapsed')) openSidebar();
+      else closeSidebar();
+    };
+    sidebarBackdrop.onclick = closeSidebar;
+    // Close sidebar on ESC
+    sidebar.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeSidebar();
+    });
+    // Close sidebar on resize to desktop
+    window.addEventListener('resize', function() {
+      if(window.innerWidth >= 900) {
+        sidebar.classList.remove('sidebar-collapsed');
+        document.body.classList.remove('sidebar-open');
+      } else {
+        sidebar.classList.add('sidebar-collapsed');
+      }
+    });
+    // Initial state
+    if(window.innerWidth < 900) sidebar.classList.add('sidebar-collapsed');
+    // Sidebar active menu
+    document.querySelectorAll('.menu-item').forEach(item => {
+      item.addEventListener('click', function() {
+        document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+        this.classList.add('active');
+        if(window.innerWidth < 900) closeSidebar();
+      });
+    });
+    // Language switch
+    const en = document.getElementById('lang-en');
+    const id = document.getElementById('lang-id');
+    const docEn = document.getElementById('doc-en');
+    const docId = document.getElementById('doc-id');
+    en.onclick = () => {
+      en.classList.add('active-lang');
+      id.classList.remove('active-lang');
+      docEn.style.display = '';
+      docId.style.display = 'none';
+    };
+    id.onclick = () => {
+      id.classList.add('active-lang');
+      en.classList.remove('active-lang');
+      docEn.style.display = 'none';
+      docId.style.display = '';
+    };
+    // Dark mode toggle + auto
+    const darkToggle = document.getElementById('dark-toggle');
+    function setDarkMode(val) {
+      if(val) document.body.classList.add('dark-mode');
+      else document.body.classList.remove('dark-mode');
+    }
+    darkToggle.onclick = () => {
+      const isDark = document.body.classList.toggle('dark-mode');
+      localStorage.setItem('dark-mode', isDark ? '1' : '0');
+    };
+    if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setDarkMode(true);
+    }
+    if(localStorage.getItem('dark-mode')==='1') setDarkMode(true);
+    if(localStorage.getItem('dark-mode')==='0') setDarkMode(false);
+    // Smooth scroll for sidebar links
+    document.querySelectorAll('.section-link').forEach(link => {
+      link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          window.scrollTo({ top: target.offsetTop - 30, behavior: 'smooth' });
+        }
+        if(window.innerWidth < 900) sidebar.classList.add('sidebar-collapsed');
+      });
+    });
+    // Copy to clipboard with feedback
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const text = this.getAttribute('data-copy');
+        navigator.clipboard.writeText(text);
+        this.classList.add('copied');
+        setTimeout(()=>this.classList.remove('copied'), 1200);
+      });
+    });
+    // Live API Tester (EN)
+    async function sendLiveRequest() {
+      const msg = document.getElementById('tester-message').value;
+      const sid = document.getElementById('tester-session').value;
+      let resp;
+      try {
+        const r = await fetch('https://bot-meta-analisis-api.onrender.com/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, session_id: sid })
+        });
+        resp = await r.json();
+      } catch (e) {
+        resp = { response: `Error: ${e.message || e}`, session_id: sid || 'mock-session-id' };
+      }
+      document.getElementById('live-response-json').textContent = JSON.stringify(resp, null, 2);
+      document.getElementById('live-response').classList.remove('hidden');
+    }
+    // Live API Tester (ID)
+    async function sendLiveRequestID() {
+      const msg = document.getElementById('tester-message-id').value;
+      const sid = document.getElementById('tester-session-id').value;
+      let resp;
+      try {
+        const r = await fetch('https://bot-meta-analisis-api.onrender.com/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, session_id: sid })
+        });
+        resp = await r.json();
+      } catch (e) {
+        resp = { response: `Error: ${e.message || e}`, session_id: sid || 'mock-session-id' };
+      }
+      document.getElementById('live-response-json-id').textContent = JSON.stringify(resp, null, 2);
+      document.getElementById('live-response-id').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

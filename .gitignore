@@ -1,0 +1,20 @@
+# .gitignore untuk deployment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.DS_Store
+.vscode/
+chat_history*.txt
+test_*.py
+*_old.py
+laravel_env_additions.txt
+ChatController_Flask_Integration.php
+
+# Keep only essential files:
+# - app.py
+# - requirements_optimized.txt  
+# - Dockerfile
+# - README.md
