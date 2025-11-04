@@ -13,10 +13,14 @@ def col_fallback(row, names, default=0):
     """
     ADDITIVE: Safe column name fallback dengan str() conversion.
     Google Sheets dapat return column keys sebagai int/float/date, bukan hanya string.
+    ALSO handles non-string items in names list (defensive programming).
     """
     for n in names:
         for k in row.keys():
-            if str(k).strip().lower() == n.strip().lower():
+            # DEFENSIVE: Both k and n must be safely converted to string
+            k_str = str(k).strip().lower() if k is not None else ""
+            n_str = str(n).strip().lower() if n is not None else ""
+            if k_str == n_str:
                 return row[k]
     return default
 
