@@ -1,3 +1,21 @@
+# ============================================================================
+# HELPER: Safe column fallback (handles non-string column keys from Sheets)
+# ============================================================================
+def col_fallback(row, names, default=0):
+    """
+    ADDITIVE: Safe column name fallback dengan str() conversion.
+    Google Sheets dapat return column keys sebagai int/float/date, bukan hanya string.
+    """
+    for n in names:
+        for k in row.keys():
+            if str(k).strip().lower() == n.strip().lower():
+                return row[k]
+    return default
+
+# ============================================================================
+# AGGREGATE FUNCTIONS
+# ============================================================================
+
 # Additive: Breakdown metrik utama per worksheet di semua file
 def aggregate_metrics_by_worksheet(sheet_data):
     """
@@ -13,13 +31,6 @@ def aggregate_metrics_by_worksheet(sheet_data):
         'total_lead_form': 0,
         'total_msg_conv': 0
     })
-    # Fallbacks for column names
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
 
     for r in sheet_data:
         sheet_id = r.get('sheet_id', r.get('Sheet ID', 'Unknown'))
@@ -110,12 +121,7 @@ def safe_float(val):
 
 def aggregate_main_metrics(sheet_data):
     """Hitung total cost, impressions, clicks, link clicks, leads, dsb."""
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
 
     total_cost = sum(safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya'])) for r in sheet_data)
     total_impressions = sum(safe_float(col_fallback(r, ['impressions', 'Impressions', 'IMP', 'imp'])) for r in sheet_data)
@@ -153,12 +159,7 @@ def aggregate_daily_weekly_cost(sheet_data):
                 except:
                     continue
         if tgl:
-            def col_fallback(row, names, default=0):
-                for n in names:
-                    for k in row.keys():
-                        if k.strip().lower() == n.strip().lower():
-                            return row[k]
-                return default
+            # Uses global col_fallback helper
             c = safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))
             daily_cost.setdefault(tgl.date(), 0)
             daily_cost[tgl.date()] += c
@@ -196,14 +197,7 @@ def aggregate_by_period_enhanced(sheet_data, period='daily'):
         'conversion_rate': 0
     })
     
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                # ADDITIVE: Safety check - ensure k is string before strip/lower
-                k_str = str(k) if k is not None else ""
-                if k_str.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
     
     print(f"[DEBUG] aggregate_by_period_enhanced: processing {len(sheet_data)} rows, period='{period}'")
     
@@ -276,12 +270,7 @@ def aggregate_outbound_clicks(sheet_data):
         'proportion': {}  # Akan diisi dengan percentage
     }
     
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
     
     print(f"[DEBUG] aggregate_outbound_clicks: processing {len(sheet_data)} rows")
     
@@ -326,12 +315,7 @@ def aggregate_outbound_clicks(sheet_data):
 
 def aggregate_breakdown(sheet_data, by="Ad set"):
     stats = defaultdict(lambda: {'cost':0,'wa':0,'cpwa':0,'impr':0,'clicks':0,'link':0,'ctr':0,'lctr':0})
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
 
     for r in sheet_data:
         key = r.get(by, r.get(by.title(), 'Unknown'))
@@ -348,12 +332,7 @@ def aggregate_breakdown(sheet_data, by="Ad set"):
 
 def aggregate_age_gender(sheet_data):
     stats = defaultdict(lambda: {'cost':0,'wa':0,'cpwa':0,'impr':0,'clicks':0,'link':0,'ctr':0,'lctr':0})
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
 
     for r in sheet_data:
         age = r.get('Age', 'Unknown')
@@ -404,12 +383,7 @@ def aggregate_age_gender_enhanced(sheet_data):
         'conversion_rate': 0
     })
     
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
     
     print(f"[DEBUG] aggregate_age_gender_enhanced: processing {len(sheet_data)} rows")
     
@@ -466,12 +440,7 @@ def aggregate_age_gender_monthly(sheet_data):
     Mengembalikan dict: {(age|gender, yyyy-mm): {cost, impr, clicks, ctr, ...}}
     """
     stats = defaultdict(lambda: {'cost':0,'wa':0,'impr':0,'clicks':0,'link':0})
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
 
     for r in sheet_data:
         age = r.get('Age', 'Unknown')
@@ -519,12 +488,7 @@ def aggregate_region(sheet_data):
     """
     stats = defaultdict(lambda: {'cost':0,'impr':0,'clicks':0,'link':0,'reach':0,'freq':0,'cpm':0,'cpc':0,'ctr':0,'lctr':0})
     
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper
     
     print(f"[DEBUG] aggregate_region: processing {len(sheet_data)} rows")
     
@@ -593,12 +557,7 @@ def aggregate_breakdown_enhanced(sheet_data, by="Ad set"):
         'conversion_rate': 0  # Leads / Clicks ratio
     })
     
-    def col_fallback(row, names, default=0):
-        for n in names:
-            for k in row.keys():
-                if k.strip().lower() == n.strip().lower():
-                    return row[k]
-        return default
+    # Uses global col_fallback helper (THIS IS THE ONE THAT WAS CRASHING AT LINE 599)
     
     print(f"[DEBUG] aggregate_breakdown_enhanced: processing {len(sheet_data)} rows, grouping by '{by}'")
     
