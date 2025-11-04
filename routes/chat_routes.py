@@ -203,6 +203,18 @@ def chat():
     import os
     sheet_ids = [os.getenv('GOOGLE_SHEET_ID'), os.getenv('GOOGLE_SHEET2_ID')]
     print('DEBUG: sheet_ids loaded:', sheet_ids)
+    
+    # ADDITIVE: Worksheet whitelist filter (configurable via env)
+    # Default: only load "Age & Gender" and "Region" worksheets
+    # Set WORKSHEET_WHITELIST='*' to load all worksheets (old behavior)
+    worksheet_whitelist_env = os.getenv('WORKSHEET_WHITELIST', 'Age & Gender,Region')
+    if worksheet_whitelist_env.strip() == '*':
+        WORKSHEET_WHITELIST = None  # Load all worksheets (old behavior)
+        print('[DEBUG] WORKSHEET_WHITELIST=* - Loading ALL worksheets (old behavior preserved)')
+    else:
+        WORKSHEET_WHITELIST = [pattern.strip() for pattern in worksheet_whitelist_env.split(',')]
+        print(f'[DEBUG] WORKSHEET_WHITELIST active: {WORKSHEET_WHITELIST}')
+    
     all_data = []
     worksheet_row_meta = []  # metadata jumlah baris per worksheet per file
     for idx, sheet_id in enumerate(sheet_ids):
@@ -219,6 +231,11 @@ def chat():
             worksheet_names = [ws.title for ws in worksheet_objs]
             print(f'[DEBUG] Sheet {sheet_id} worksheets: {worksheet_names}')
             for ws_name in worksheet_names:
+                # ADDITIVE: Filter worksheet by whitelist pattern
+                if WORKSHEET_WHITELIST is not None:
+                    if not any(pattern in ws_name for pattern in WORKSHEET_WHITELIST):
+                        print(f'[DEBUG] SKIP worksheet "{ws_name}" - not matching whitelist patterns: {WORKSHEET_WHITELIST}')
+                        continue  # Skip worksheet yang tidak match whitelist
                 data = get_cached_sheet_data(sheet_id, ws_name)
                 if data is None:
                     ws = None
@@ -796,6 +813,12 @@ def chat():
                 print(f'[DEBUG] Gagal mengambil daftar worksheet dari sheet "{sheet_id}": {e}')
                 continue
             for ws_name in worksheet_names:
+                    # ADDITIVE: Filter worksheet by whitelist pattern (same as above)
+                    if WORKSHEET_WHITELIST is not None:
+                        if not any(pattern in ws_name for pattern in WORKSHEET_WHITELIST):
+                            print(f'[DEBUG] SKIP worksheet "{ws_name}" - not matching whitelist patterns: {WORKSHEET_WHITELIST}')
+                            continue  # Skip worksheet yang tidak match whitelist
+                    
                     data = get_cached_sheet_data(sheet_id, ws_name)
                     if data is None:
                         try:

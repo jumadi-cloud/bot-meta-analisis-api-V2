@@ -269,4 +269,26 @@ Server: [http://127.0.0.1:5000](http://127.0.0.1:5000)
 - Debug/logging tersedia untuk audit filter segmented/demografi.
 - Arsitektur modular: Flask, Google Sheets, Gemini AI, ChromaDB, dan prompt logic.
 
+### 🔧 Worksheet Filtering (ADDITIVE)
+
+By default, API hanya memuat worksheet yang mengandung **"Age & Gender"** dan **"Region"** untuk efisiensi.
+
+**Konfigurasi via Environment Variable:**
+```bash
+# Default: hanya load "Age & Gender" dan "Region"
+WORKSHEET_WHITELIST=Age & Gender,Region
+
+# Load semua worksheet (behavior lama)
+WORKSHEET_WHITELIST=*
+
+# Custom patterns (contoh: hanya "Report" dan "Studio")
+WORKSHEET_WHITELIST=Report,Studio
+```
+
+**Cara Kerja:**
+- ✅ Worksheet yang match pattern akan diload
+- ⛔ Worksheet lain akan di-skip (tidak diload)
+- 🔄 Berlaku untuk semua file sheet (Sheet 1, Sheet 2, dst)
+- 📊 Mengurangi memory usage dan mempercepat response time
+
 ---
