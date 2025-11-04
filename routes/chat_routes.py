@@ -296,7 +296,12 @@ def chat():
     performa_patterns = [
         r'\bperforma\b', r'\bperform\b', r'\btrend\b', r'\bnaik\b', r'\bturun\b', r'\bstagnan\b',
         r'\banalisis\b', r'\banalisa\b', r'\bpenyebab\b', r'\balasan\b', r'\bkenapa\b', r'\bmengapa\b',
-        r'\bpenilaian\b', r'\bevaluasi\b', r'\bhasil\b', r'\bprogress\b', r'\bperkembangan\b', r'\bperubahan\b', r'\bperbandingan\b', r'\bbanding\b', r'\bkinerja\b', r'\bpenurunan\b', r'\bpeningkatan\b', r'\bpenjelasan\b'
+        r'\bpenilaian\b', r'\bevaluasi\b', r'\bhasil\b', r'\bprogress\b', r'\bperkembangan\b', r'\bperubahan\b', r'\bperbandingan\b', r'\bbanding\b', r'\bkinerja\b', r'\bpenurunan\b', r'\bpeningkatan\b', r'\bpenjelasan\b',
+        # ADDITIVE: Aggregation query patterns untuk match CSV prompt requirements
+        r'\bberapa\b', r'\btotal\b', r'\bjumlah\b', r'\bapa\b.*\b(tertinggi|terendah|terbesar|terkecil|terbaik|terburuk)\b',
+        r'\b(mana|yang|adset|ad|campaign|gender|umur|usia|region|periode|tanggal|minggu)\b.*\b(tertinggi|terendah|terbesar|terkecil|terbaik|terburuk)\b',
+        r'\b(cost|spend|impr|impression|reach|frequency|clicks|link|ctr|lctr|cpm|cpc|cplc|cpwa|cpf|conversion|lead|whatsapp|facebook|form|outbound)\b',
+        r'\brata-rata\b', r'\bmean\b', r'\baverage\b', r'\bpersentase\b', r'\bproportion\b', r'\bratio\b'
     ]
     bulan_patterns = [
         r'\bdata bulan\b', r'\bdaftar bulan\b', r'\bperiode\b', r'\b(bulan|january|february|maret|april|mei|juni|juli|agustus|september|oktober|november|desember)\b',
