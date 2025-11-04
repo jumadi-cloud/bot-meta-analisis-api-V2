@@ -142,11 +142,13 @@ def chat():
             print('DEBUG: request.get_json() success, data:', data)
         except Exception as e:
             print(f'[ERROR] request.get_json() failed: {e}')
+            error_msg = f"Terjadi error saat membaca request: {e}"
             return jsonify({
                 "success": False,
                 "session_id": None,
                 "chat_history": [],
-                "llm_answer": f"Terjadi error saat membaca request: {e}",
+                "llm_answer": error_msg,
+                "output": error_msg,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": []
             })
         # Support both 'message' and 'query' for backward compatibility
@@ -175,6 +177,7 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
+                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": []
             })
         session_id = data.get("session_id")
@@ -185,11 +188,13 @@ def chat():
         print(f'[ERROR] Exception global di awal chat(): {e}')
         import traceback
         traceback.print_exc()
+        error_msg = f"Terjadi error internal: {e}"
         return jsonify({
             "success": False,
             "session_id": None,
             "chat_history": [],
-            "llm_answer": f"Terjadi error internal: {e}",
+            "llm_answer": error_msg,
+            "output": error_msg,  # ADDITIVE: Laravel expects 'output' key
             "worksheet_row_meta": []
         })
 
@@ -429,6 +434,7 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
+                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
         
@@ -495,6 +501,7 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
+                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
         else:
@@ -623,6 +630,7 @@ def chat():
                     "session_id": session_id,
                     "chat_history": chat_history,
                     "llm_answer": llm_answer,
+                    "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                     "worksheet_row_meta": worksheet_row_meta
                 })
             # User sudah menyebut worksheet, data sudah di-filter, lanjut ke analisis (logic di bawah akan handle)
@@ -649,6 +657,7 @@ def chat():
                     "session_id": session_id,
                     "chat_history": chat_history,
                     "llm_answer": llm_answer,
+                    "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                     "worksheet_row_meta": worksheet_row_meta
                 })
     
@@ -728,6 +737,7 @@ def chat():
             "session_id": session_id,
             "chat_history": chat_history,
             "llm_answer": llm_answer,
+            "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
             "worksheet_row_meta": worksheet_row_meta
         })
     
@@ -760,6 +770,7 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
+                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
     
@@ -849,6 +860,7 @@ def chat():
                     "session_id": session_id,
                     "chat_history": chat_history,
                     "llm_answer": llm_answer,
+                    "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                     "worksheet_row_meta": worksheet_row_meta
                 })
             worksheet_columns = {}
@@ -894,6 +906,7 @@ def chat():
                 "session_id": session_id,
                 "chat_history": chat_history,
                 "llm_answer": llm_answer,
+                "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
                 "worksheet_row_meta": worksheet_row_meta
             })
     # END of if/else block for sheet_data loading
@@ -969,11 +982,13 @@ def chat():
         chat_history = get_history_db(session_id)
     except Exception as e:
         print('WARNING: Gagal ambil chat history:', e)
+    # ADDITIVE: Tambahkan field 'output' untuk Laravel compatibility (tanpa hapus field lama)
     return jsonify({
         "success": True,
         "session_id": session_id,
         "chat_history": chat_history,
         "llm_answer": llm_answer,
+        "output": llm_answer,  # ADDITIVE: Laravel expects 'output' key
         "worksheet_row_meta": worksheet_row_meta
     })
     # End of chat()
