@@ -48,6 +48,7 @@ class AggregationState(BaseModel):
     outbound_clicks: dict = None           # Outbound clicks breakdown
     sorted_months: list = None  # Urutan bulan hasil agregasi
     adsets_by_sheet: dict = None  # New: hasil ekstraksi ad set per sheet
+    chat_history: list = None  # ADDITIVE: Chat history for LLM context memory
 
 
 # Node: Tren/agregasi bulanan segmented age|gender (additive)
@@ -778,7 +779,8 @@ def node_llm_summary(state: AggregationState):
         print(f"[DEBUG] LLM_SUMMARY: period_stats_monthly NOT available or empty")
     
     question = getattr(state, 'question', 'Berapa total cost dan leads bulan ini?')
-    llm_answer = llm_summarize_aggregation(full_summary, question)
+    chat_history = getattr(state, 'chat_history', [])  # Get chat history from state
+    llm_answer = llm_summarize_aggregation(full_summary, question, chat_history=chat_history)
     return state.copy(update={"llm_answer": llm_answer})
 
 graph.add_node("llm_summary", node_llm_summary)
@@ -812,7 +814,18 @@ workflow = graph.compile()
 
 # Example usage
 
-def run_aggregation_workflow(sheet_data, question=None):
+def run_aggregation_workflow(sheet_data, question=None, chat_history=None):
+    """
+    Run aggregation workflow with optional chat history for context.
+    
+    Args:
+        sheet_data: List of data rows from Google Sheets
+        question: User query string
+        chat_history: Optional list of previous chat messages for LLM context
+    
+    Returns:
+        Workflow result dict with llm_answer and other aggregation data
+    """
     # DEBUG: Print keys dan contoh data
     if sheet_data:
         print("[DEBUG] Kolom di sheet_data:", list(sheet_data[0].keys()))
@@ -821,8 +834,17 @@ def run_aggregation_workflow(sheet_data, question=None):
             print(f"  Row {i+1}: {row}")
     else:
         print("[DEBUG] sheet_data kosong!")
+    
+    # ADDITIVE: Include chat_history in state for LLM context
+    if chat_history:
+        print(f"[DEBUG] Chat history provided: {len(chat_history)} messages")
+    
     # Pastikan question dikirim ke state agar intent detection bekerja
-    state = AggregationState(sheet_data=sheet_data, question=question)
+    state = AggregationState(
+        sheet_data=sheet_data, 
+        question=question,
+        chat_history=chat_history if chat_history else []
+    )
     result = workflow.invoke(state)
     return result
 

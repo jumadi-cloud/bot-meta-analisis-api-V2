@@ -9,6 +9,9 @@ llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
 prompt_template = ChatPromptTemplate.from_template(
     """
     Anda adalah asisten analisis Facebook Ads yang profesional, proaktif, dan komunikatif.
+    
+    {chat_history_context}
+    
     Berdasarkan hasil agregasi berikut:
     {summary}
     Lakukan analisis tren performa (apakah naik, turun, atau stagnan) dari data tersebut.
@@ -19,6 +22,9 @@ prompt_template = ChatPromptTemplate.from_template(
     Jangan mengarang jika data tidak tersedia, dan jangan memberikan informasi yang tidak ada di data.
     Jika pertanyaan user tidak bisa dijawab dari data, jawab dengan jujur dan profesional, misal: "Maaf, data yang Anda minta tidak tersedia."
     Akhiri dengan bullet point saran atau rekomendasi jika memungkinkan.
+    
+    PENTING: Jika ada riwayat percakapan di atas, gunakan informasi tersebut untuk memberikan jawaban yang lebih kontekstual. Misalnya, jika user sudah memperkenalkan diri atau memberikan informasi pribadi, ingat dan gunakan informasi tersebut.
+    
     Pertanyaan user:
     {question}
     """
@@ -26,6 +32,34 @@ prompt_template = ChatPromptTemplate.from_template(
 
 output_parser = StrOutputParser()
 
-def llm_summarize_aggregation(summary: str, question: str) -> str:
+def llm_summarize_aggregation(summary: str, question: str, chat_history: list = None) -> str:
+    """
+    Generate LLM summary with optional chat history for context.
+    
+    Args:
+        summary: Data aggregation summary
+        question: User query
+        chat_history: Optional list of chat messages [{"role": "User"/"LLM", "message": "...", "timestamp": "..."}]
+    
+    Returns:
+        LLM generated response string
+    """
+    # Format chat history for prompt context
+    chat_history_context = ""
+    if chat_history and len(chat_history) > 0:
+        chat_history_context = "Riwayat percakapan sebelumnya:\n"
+        for msg in chat_history[-10:]:  # Only use last 10 messages to avoid token limit
+            role = msg.get("role", "Unknown")
+            message = msg.get("message", "")
+            if role and message:
+                chat_history_context += f"- {role}: {message}\n"
+        chat_history_context += "\n"
+    else:
+        chat_history_context = ""
+    
     chain = prompt_template | llm | output_parser
-    return chain.invoke({"summary": summary, "question": question})
+    return chain.invoke({
+        "summary": summary, 
+        "question": question,
+        "chat_history_context": chat_history_context
+    })
