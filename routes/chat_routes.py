@@ -347,6 +347,14 @@ def chat():
     print(f'[DEBUG] data_available_intent_kw match: {any(kw in user_prompt_lc for kw in data_available_intent_kw)}')
     print(f'[DEBUG] worksheet_intent_kw match: {any(kw in user_prompt_lc for kw in worksheet_intent_kw)}')
     
+    # ADDITIVE: Load chat history EARLY untuk AUTO-INFER worksheet context (NEW BEHAVIOR)
+    chat_history = []
+    try:
+        chat_history = get_history_db(session_id)
+        print(f'[DEBUG] Loaded chat history: {len(chat_history)} messages for context inference')
+    except Exception as e:
+        print(f'WARNING: Gagal ambil chat history untuk context inference: {e}')
+    
     # ADDITIVE: Handler untuk analytic intent (performa/saran/tren) - Cek worksheet selection SEBELUM handler lain
     analytic_intents = ['tanya_tren', 'tanya_performa', 'tanya_saran']
     
@@ -354,6 +362,34 @@ def chat():
     print(f'[DEBUG] Is analytic intent? {intent in analytic_intents}')
     
     if intent in analytic_intents:
+        # ADDITIVE: Auto-infer worksheet from chat history FIRST (NEW BEHAVIOR)
+        # Check if recent messages mention specific worksheet
+        inferred_worksheet = None
+        if chat_history and len(chat_history) > 0:
+            print(f'[DEBUG] AUTO-INFER: Checking last {min(5, len(chat_history))} messages for worksheet context...')
+            # Look at last 5 messages (newest first)
+            for msg in reversed(chat_history[-5:]):
+                message_text = msg.get("message", "").lower()
+                role = msg.get("role", "")
+                print(f'[DEBUG] AUTO-INFER: Checking {role} message: "{message_text[:80]}..."')
+                
+                # Check for worksheet names in message
+                for meta in worksheet_row_meta:
+                    ws_name_original = meta.get('worksheet', '')
+                    ws_name_lower = ws_name_original.lower()
+                    if ws_name_lower and ws_name_lower in message_text:
+                        inferred_worksheet = ws_name_original
+                        print(f'[DEBUG] AUTO-INFER: Found worksheet "{inferred_worksheet}" in chat history (role={role})')
+                        break
+                
+                if inferred_worksheet:
+                    break
+            
+            if inferred_worksheet:
+                print(f'[DEBUG] AUTO-INFER: Successfully inferred worksheet "{inferred_worksheet}" from conversation context')
+            else:
+                print('[DEBUG] AUTO-INFER: No worksheet found in recent chat history')
+        
         # ADDITIVE: Enhanced worksheet mention detection dengan multi-keyword matching
         # Step 1: Coba exact match dulu (preserved old behavior)
         mentioned_worksheet = None
@@ -410,6 +446,12 @@ def chat():
         
         print(f'[DEBUG] mentioned_worksheet: {mentioned_worksheet}')
         print(f'[DEBUG] ambiguous_matches: {ambiguous_matches}')
+        print(f'[DEBUG] inferred_worksheet: {inferred_worksheet}')
+        
+        # ADDITIVE: If no explicit mention but have inferred, use it (NEW BEHAVIOR)
+        if not mentioned_worksheet and inferred_worksheet:
+            mentioned_worksheet = inferred_worksheet
+            print(f'[DEBUG] AUTO-INFER: Using inferred worksheet "{mentioned_worksheet}" from conversation context')
         
         # ADDITIVE: Handle ambiguous matches dengan disambiguation (NEW BRANCH)
         if ambiguous_matches and len(ambiguous_matches) > 1:
@@ -771,11 +813,42 @@ def chat():
     if intent == 'umum' and not any(kw in user_prompt_lc for kw in worksheet_intent_kw):
             from langchain_google_genai import ChatGoogleGenerativeAI
             from langchain_core.output_parsers import StrOutputParser
+            from langchain_core.prompts import ChatPromptTemplate
+            
+            # ADDITIVE: Get chat history untuk context
+            chat_history_context = ""
+            try:
+                history_list = get_history_db(session_id)
+                if history_list and len(history_list) > 0:
+                    chat_history_context = "Riwayat percakapan sebelumnya:\n"
+                    for msg in history_list[-10:]:  # Last 10 messages
+                        role = msg.get("role", "Unknown")
+                        message = msg.get("message", "")
+                        if role and message:
+                            chat_history_context += f"- {role}: {message}\n"
+                    chat_history_context += "\n"
+                    print(f'[DEBUG] Chat history context prepared: {len(history_list)} messages')
+            except Exception as e:
+                print(f'WARNING: Gagal ambil chat history untuk context: {e}')
+                chat_history_context = ""
+            
             llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
             output_parser = StrOutputParser()
+            
+            # ADDITIVE: Use prompt template with chat history
+            prompt_template = ChatPromptTemplate.from_template(
+                """Anda adalah asisten analisis Facebook Ads yang profesional dan komunikatif.
+                
+{chat_history_context}
+
+PENTING: Jika ada riwayat percakapan di atas, gunakan informasi tersebut untuk memberikan jawaban yang lebih kontekstual. Misalnya, jika user sudah memperkenalkan diri atau memberikan informasi pribadi, ingat dan gunakan informasi tersebut dalam jawaban Anda.
+
+Pertanyaan user: {question}"""
+            )
+            
             try:
-                answer = llm.invoke(user_prompt)
-                answer = output_parser.invoke(answer)
+                chain = prompt_template | llm | output_parser
+                answer = chain.invoke({"chat_history_context": chat_history_context, "question": user_prompt})
             except Exception as e:
                 answer = f"Maaf, terjadi error saat menjawab pertanyaan: {e}"
             llm_answer = answer
@@ -947,8 +1020,16 @@ def chat():
     
     from workflows.aggregation_workflow import run_aggregation_workflow
     try:
+        # ADDITIVE: Get chat history untuk pass ke workflow untuk LLM context
+        chat_history_for_workflow = []
+        try:
+            chat_history_for_workflow = get_history_db(session_id)
+            print(f'[DEBUG] Retrieved {len(chat_history_for_workflow)} chat history messages for workflow context')
+        except Exception as e:
+            print(f'WARNING: Gagal ambil chat history untuk workflow: {e}')
+        
         print(f'[DEBUG] Running aggregation workflow with {len(sheet_data)} rows and question: {user_prompt}')
-        workflow_result = run_aggregation_workflow(sheet_data, question=user_prompt)
+        workflow_result = run_aggregation_workflow(sheet_data, question=user_prompt, chat_history=chat_history_for_workflow)
         llm_answer = workflow_result.get("llm_answer")
         print(f'[DEBUG] Workflow completed successfully, llm_answer length: {len(llm_answer) if llm_answer else 0}')
     except Exception as workflow_error:
