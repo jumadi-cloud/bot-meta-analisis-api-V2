@@ -354,7 +354,7 @@ def aggregate_age_gender(sheet_data):
     return stats
 
 # ADDITIVE: Enhanced age & gender aggregation dengan metrik lengkap
-def aggregate_age_gender_enhanced(sheet_data):
+def aggregate_age_gender_enhanced(sheet_data, adset_name=None):
     """
     Enhanced age & gender agregasi dengan metrik tambahan:
     - Reach, Frequency
@@ -364,6 +364,14 @@ def aggregate_age_gender_enhanced(sheet_data):
     - Conversion Rate
     
     ADDITIVE: Tidak menghapus aggregate_age_gender lama, ini versi enhanced
+    ADDITIVE: Parameter adset_name optional (default None = semua adset)
+    
+    Args:
+        sheet_data: List of data rows
+        adset_name: Optional filter untuk adset spesifik (default: None, include all adsets)
+    
+    Returns:
+        Dict dengan key=age|gender, value=dict metrik
     """
     stats = defaultdict(lambda: {
         'cost': 0,
@@ -388,6 +396,16 @@ def aggregate_age_gender_enhanced(sheet_data):
     })
     
     # Uses global col_fallback helper
+    
+    # ADDITIVE: Filter by adset_name if provided (non-breaking, optional parameter)
+    if adset_name:
+        print(f"[DEBUG] aggregate_age_gender_enhanced: filtering by adset_name='{adset_name}'")
+        original_count = len(sheet_data)
+        sheet_data = [r for r in sheet_data if str(r.get('Ad set', r.get('Ad Set', r.get('Adset', '')))).lower() == adset_name.lower()]
+        print(f"[DEBUG] aggregate_age_gender_enhanced: filtered {original_count} rows -> {len(sheet_data)} rows matching adset")
+        if len(sheet_data) == 0:
+            print(f"[WARN] aggregate_age_gender_enhanced: No data found for adset '{adset_name}'")
+            return {}  # Return empty dict if no matching adset
     
     print(f"[DEBUG] aggregate_age_gender_enhanced: processing {len(sheet_data)} rows")
     
@@ -614,3 +632,70 @@ def aggregate_breakdown_enhanced(sheet_data, by="Ad set"):
     
     print(f"[DEBUG] aggregate_breakdown_enhanced: found {len(stats)} unique values for '{by}'")
     return stats
+
+
+def aggregate_adset_by_age_gender(sheet_data, age_range=None, gender=None):
+    """
+    ADDITIVE: Aggregate by adset, filtered by specific age/gender segment.
+    
+    Use case: "Kelompok laki-laki 45-54 menghasilkan klik terbanyak di adset mana?"
+    → Filter rows where age=45-54 AND gender=male, then aggregate by adset
+    
+    Args:
+        sheet_data: List of row dicts from Google Sheets
+        age_range: String like "45-54", "35-44", etc. (optional)
+        gender: String like "male", "female", "laki-laki", "wanita", etc. (optional)
+    
+    Returns:
+        dict: {adset_name: {metrics...}}
+    """
+    print(f"[DEBUG] aggregate_adset_by_age_gender: age_range={age_range}, gender={gender}")
+    print(f"[DEBUG] aggregate_adset_by_age_gender: processing {len(sheet_data)} rows")
+    
+    # Filter data by age/gender first
+    filtered_data = []
+    
+    for row in sheet_data:
+        # Get age and gender from row
+        row_age = str(col_fallback(row, ['age', 'Age', 'AGE', 'usia', 'Usia'], '')).strip()
+        row_gender = str(col_fallback(row, ['gender', 'Gender', 'GENDER', 'jenis kelamin', 'Jenis Kelamin'], '')).strip().lower()
+        
+        # Normalize gender
+        gender_normalized = None
+        if row_gender:
+            if row_gender in ['male', 'laki-laki', 'pria', 'm', 'l']:
+                gender_normalized = 'male'
+            elif row_gender in ['female', 'wanita', 'perempuan', 'f', 'p']:
+                gender_normalized = 'female'
+            else:
+                gender_normalized = row_gender  # unknown, etc.
+        
+        # Check filters
+        age_match = True
+        gender_match = True
+        
+        if age_range:
+            age_match = row_age == age_range
+        
+        if gender:
+            gender_input_normalized = gender.lower()
+            if gender_input_normalized in ['male', 'laki-laki', 'pria', 'm', 'l']:
+                gender_input_normalized = 'male'
+            elif gender_input_normalized in ['female', 'wanita', 'perempuan', 'f', 'p']:
+                gender_input_normalized = 'female'
+            gender_match = gender_normalized == gender_input_normalized
+        
+        if age_match and gender_match:
+            filtered_data.append(row)
+    
+    print(f"[DEBUG] aggregate_adset_by_age_gender: filtered to {len(filtered_data)} rows (age={age_range}, gender={gender})")
+    
+    if len(filtered_data) == 0:
+        print(f"[WARN] aggregate_adset_by_age_gender: No data found for age={age_range}, gender={gender}")
+        return {}
+    
+    # Now aggregate filtered data by adset using existing function
+    result = aggregate_breakdown_enhanced(filtered_data, by="Ad set")
+    
+    print(f"[DEBUG] aggregate_adset_by_age_gender: found {len(result)} adsets for age={age_range}, gender={gender}")
+    return result

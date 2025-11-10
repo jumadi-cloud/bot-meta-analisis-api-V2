@@ -304,6 +304,9 @@ def chat():
         # FIXED: More specific pattern - "apa" must be followed by metric/dimension keywords, not worksheet/data/sheet
         r'\bapa\b.{0,30}(segmen|adset|ad|campaign|region|periode|umur|usia|gender)\b.{0,30}\b(tertinggi|terendah|terbesar|terkecil|terbaik|terburuk|paling)\b',
         r'\b(mana|yang|adset|ad|campaign|gender|umur|usia|region|periode|tanggal|minggu)\b.*\b(tertinggi|terendah|terbesar|terkecil|terbaik|terburuk)\b',
+        # ADDITIVE: Pattern for "kelompok X menghasilkan Y di adset/ad mana" queries
+        r'\bkelompok\b.{0,50}\b(di adset mana|di ad mana|adset mana|ad mana)\b',
+        r'\b(menghasilkan|hasilkan)\b.{0,30}\b(terbanyak|tertinggi|terbesar|paling)\b',
         r'\b(cost|spend|impr|impression|reach|frequency|clicks|link|ctr|lctr|cpm|cpc|cplc|cpwa|cpf|conversion|lead|whatsapp|facebook|form|outbound)\b',
         r'\brata-rata\b', r'\bmean\b', r'\baverage\b', r'\bpersentase\b', r'\bproportion\b', r'\bratio\b'
     ]

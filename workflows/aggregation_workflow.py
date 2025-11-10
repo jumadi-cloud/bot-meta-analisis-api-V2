@@ -19,7 +19,8 @@ from services.aggregation import (
     aggregate_breakdown_enhanced,
     aggregate_age_gender_enhanced,
     aggregate_by_period_enhanced,
-    aggregate_outbound_clicks
+    aggregate_outbound_clicks,
+    aggregate_adset_by_age_gender  # ADDITIVE: Aggregate by adset filtered by age/gender
 )
 
 # Move AggregationState class definition to the top so all functions can reference it
@@ -130,19 +131,60 @@ def node_breakdown_ad_enhanced(state: AggregationState):
 def node_age_gender_enhanced(state: AggregationState):
     """Enhanced age & gender breakdown dengan metrik lengkap"""
     print("[DEBUG] node_age_gender_enhanced: executing")
-    data = aggregate_age_gender_enhanced(state.sheet_data)
-    print(f"[DEBUG] node_age_gender_enhanced: aggregated {len(data)} age|gender segments")
+    
+    # ADDITIVE: Detect adset name in question for cross-filter (age/gender + adset)
+    # If not found, function call remains unchanged (backward compatible)
+    adset_name = None
+    question_lower = state.question.lower()
+    
+    # Check for adset keywords followed by potential adset name
+    # Patterns: "adset X", "pada adset X", "di adset X", etc.
+    import re
+    adset_patterns = [
+        r'(?:pada|di|untuk|dari)\s+(?:ad\s*set|adset)\s+([a-zA-Z0-9_\-&]+)',  # pada adset vgardh2_oil&gas
+        r'(?:ad\s*set|adset)\s+([a-zA-Z0-9_\-&]+)',  # adset vgardh2_oil&gas
+    ]
+    
+    for pattern in adset_patterns:
+        match = re.search(pattern, question_lower, re.IGNORECASE)
+        if match:
+            adset_name = match.group(1)
+            print(f"[DEBUG] node_age_gender_enhanced: detected adset_name='{adset_name}' from question")
+            break
+    
+    # Call aggregate function with or without adset filter (ADDITIVE)
+    if adset_name:
+        data = aggregate_age_gender_enhanced(state.sheet_data, adset_name=adset_name)
+        print(f"[DEBUG] node_age_gender_enhanced: aggregated {len(data)} age|gender segments (filtered by adset '{adset_name}')")
+    else:
+        data = aggregate_age_gender_enhanced(state.sheet_data)
+        print(f"[DEBUG] node_age_gender_enhanced: aggregated {len(data)} age|gender segments")
+    
     return state.copy(update={"age_gender_enhanced": data, "question": state.question})
 
 def node_period_daily(state: AggregationState):
     """Daily aggregation dengan metrik lengkap"""
     print("[DEBUG] node_period_daily: executing")
-    # ADDITIVE: Skip daily aggregation if dataset too large (performance optimization for production)
+    
+    # ADDITIVE: Check if user query needs daily data
+    question_lower = (state.question or "").lower()
+    needs_daily = any(kw in question_lower for kw in ["tanggal", "date", "hari", "harian", "daily"])
+    
+    # DEBUG: Print state.question to verify it's passed correctly
+    print(f"[DEBUG] node_period_daily: state.question = '{state.question}'")
+    print(f"[DEBUG] node_period_daily: question_lower = '{question_lower}'")
+    print(f"[DEBUG] node_period_daily: needs_daily = {needs_daily}")
+    
+    # ADDITIVE: Skip daily aggregation if dataset too large AND user doesn't need daily data
     # Daily creates too many unique keys for large datasets, causing timeout/OOM
-    # Preserved for small datasets or specific use cases
-    if len(state.sheet_data) > 5000:
+    # EXCEPTION: Always run if user explicitly asks for date-specific data
+    if len(state.sheet_data) > 5000 and not needs_daily:
         print(f"[DEBUG] node_period_daily: SKIPPED - dataset too large ({len(state.sheet_data)} rows), daily aggregation disabled for performance")
         return state.copy(update={"period_stats_daily": {}, "question": state.question})
+    
+    # ADDITIVE: If user needs daily data, run aggregation regardless of size
+    if needs_daily and len(state.sheet_data) > 5000:
+        print(f"[DEBUG] node_period_daily: ENABLED for date query despite large dataset ({len(state.sheet_data)} rows)")
     
     data = aggregate_by_period_enhanced(state.sheet_data, period='daily')
     print(f"[DEBUG] node_period_daily: aggregated {len(data)} days")
@@ -214,6 +256,16 @@ def node_detect_intent(state: AggregationState):
     if question is None:
         question = ''
     question = question.lower()
+    
+    # ADDITIVE: Detect ranking queries FIRST (highest priority) - NEW PATTERN
+    ranking_patterns = [
+        r'\b(mana|adset|ad|region|segmen|age|gender|campaign)\b.{0,50}\b(tertinggi|terendah|terbesar|terkecil|paling tinggi|paling rendah|maksimal|minimal)\b',
+        r'\b(tertinggi|terendah|terbesar|terkecil|paling tinggi|paling rendah|maksimal|minimal)\b.{0,50}\b(cost|biaya|spend|reach|clicks|ctr|impressions|leads)\b',
+        r'\b(top|bottom|best|worst)\b.{0,30}\b(adset|ad|region|campaign)\b',
+        r'\bmenyumbang\b.{0,30}\b(cost|biaya|spend|reach|clicks)\b.{0,30}\b(terbesar|tertinggi|terkecil|terendah)\b'
+    ]
+    ranking_match = any(re.search(p, question) for p in ranking_patterns)
+    
     # Regex for strategy/advice/insight intent (highest priority)
     saran_patterns = [
         r'\bcara( terbaik| paling efektif| efektif| ampuh| mudah| cepat)?\b',
@@ -230,12 +282,10 @@ def node_detect_intent(state: AggregationState):
         r'\bpenilaian\b', r'\bevaluasi\b', r'\bhasil\b', r'\bprogress\b', r'\bperkembangan\b', r'\bperubahan\b', r'\bperbandingan\b', r'\bbanding\b', r'\bkinerja\b', r'\bpenurunan\b', r'\bpeningkatan\b', r'\bpenjelasan\b'
     ]
     performa_match = any(re.search(p, question) for p in performa_patterns)
-    # Regex for bulan intent (month listing)
+    # Regex for bulan intent (month listing) - ONLY when not a ranking query
     bulan_patterns = [
         r'\bdata bulan\b',
         r'\bdaftar bulan\b',
-        r'\bperiode\b',
-        r'\b(bulan|january|february|maret|april|mei|juni|juli|agustus|september|oktober|november|desember)\b',
         r'bulan apa( saja| aja)?',
         r'bulan yang (ada|tersedia)',
         r'bulan di data',
@@ -243,16 +293,21 @@ def node_detect_intent(state: AggregationState):
         r'periode (tersedia|di data)',
         r'\bdata (periode|bulan)\b',
     ]
-    bulan_match = any(re.search(p, question) for p in bulan_patterns)
+    bulan_match = any(re.search(p, question) for p in bulan_patterns) and not ranking_match  # MODIFIED: Exclude if ranking query
+    
     # Deteksi intent tren multi-bulan (misal: "3 bulan terakhir", "4 bulan terakhir")
     trend_months = 0
     trend_match = re.search(r"(\d+) bulan terakhir", question)
     if trend_match:
         trend_months = int(trend_match.group(1))
-    # Prioritization: tren > saran > performa > bulan > umum
-    # Jika ada pola tren multi-bulan, harus tanya_tren
+    
+    # MODIFIED Prioritization: tren > ranking > saran > performa > bulan > umum
+    # Ranking queries should be treated as performa intent
     if trend_months > 0:
         intent = 'tanya_tren'
+    elif ranking_match:
+        intent = 'tanya_performa'  # Ranking is a type of performance query
+        print(f"[DEBUG] Ranking query detected, intent set to 'tanya_performa'")
     elif saran_match:
         intent = 'tanya_saran'
     elif performa_match:
@@ -456,8 +511,86 @@ graph.add_node("tren_bulanan", node_tren_bulanan)
 # Node LLM summary (will be updated in next step to use retrieved_docs)
 def node_llm_summary(state: AggregationState):
     import calendar
-    # Jika pertanyaan meminta daftar ad set, jawab eksplisit
+    import re
+    
+    # ADDITIVE: Handle query "kelompok age/gender X menghasilkan metric Y di adset mana?"
+    # Pattern: age/gender filter + ranking by adset
     question = getattr(state, 'question', '').lower()
+    
+    # Detect pattern: "kelompok ... di adset mana" or "... terbanyak di adset mana"
+    if ("di adset mana" in question or "adset mana" in question) and any(kw in question for kw in ["kelompok", "usia", "age", "laki", "pria", "male", "wanita", "female", "perempuan"]):
+        print("[DEBUG] Detected query: age/gender filter + ranking by adset")
+        
+        # Extract age range
+        age_match = re.search(r'(\d{2}[-–]\d{2})', question)
+        age_range = age_match.group(1).replace('–', '-') if age_match else None
+        
+        # Extract gender
+        gender = None
+        if any(w in question for w in ["laki-laki", "laki", "pria", "male"]):
+            gender = "male"
+        elif any(w in question for w in ["wanita", "perempuan", "female"]):
+            gender = "female"
+        
+        # Extract metric (clicks, leads, cost, impressions, etc.)
+        metric_map = {
+            'klik': 'clicks',
+            'click': 'clicks',
+            'lead': 'fb_leads',
+            'konversi': 'fb_leads',
+            'cost': 'cost',
+            'biaya': 'cost',
+            'impresi': 'impr',
+            'impression': 'impr',
+            'jangkauan': 'reach',
+            'reach': 'reach'
+        }
+        
+        detected_metric = 'clicks'  # default
+        for kw, metric_key in metric_map.items():
+            if kw in question:
+                detected_metric = metric_key
+                break
+        
+        print(f"[DEBUG] Extracted: age_range={age_range}, gender={gender}, metric={detected_metric}")
+        
+        # Aggregate by adset filtered by age/gender
+        adset_data = aggregate_adset_by_age_gender(state.sheet_data, age_range=age_range, gender=gender)
+        
+        if adset_data:
+            # Sort by metric descending
+            sorted_adsets = sorted(adset_data.items(), key=lambda x: x[1].get(detected_metric, 0), reverse=True)
+            
+            # Build answer
+            age_text = f"usia {age_range}" if age_range else "semua usia"
+            gender_text = "laki-laki" if gender == "male" else "wanita" if gender == "female" else "semua gender"
+            metric_text = {
+                'clicks': 'klik',
+                'fb_leads': 'leads',
+                'cost': 'cost',
+                'impr': 'impressions',
+                'reach': 'reach'
+            }.get(detected_metric, detected_metric)
+            
+            answer_lines = [
+                f"Berdasarkan data untuk kelompok **{gender_text} {age_text}**:\n",
+                f"**Ranking Adset Berdasarkan {metric_text.upper()}:**\n"
+            ]
+            
+            # Show top 5 adsets
+            for i, (adset_name, metrics) in enumerate(sorted_adsets[:5], 1):
+                value = metrics.get(detected_metric, 0)
+                cost = metrics.get('cost', 0)
+                answer_lines.append(f"{i}. **{adset_name}**: {value:,.0f} {metric_text} (Cost: Rp {cost:,.0f})")
+            
+            llm_answer = "\n".join(answer_lines)
+            print(f"[DEBUG] Generated answer for age/gender + adset ranking query")
+            return state.copy(update={"llm_answer": llm_answer})
+        else:
+            llm_answer = f"Tidak ditemukan data untuk kelompok {gender_text if gender else 'semua gender'} {age_text if age_range else 'semua usia'}."
+            return state.copy(update={"llm_answer": llm_answer})
+    
+    # Jika pertanyaan meminta daftar ad set, jawab eksplisit
     adsets_by_sheet = getattr(state, 'adsets_by_sheet', None)
     if any(x in question for x in ["ad set apa", "adset apa", "daftar ad set", "ad set yang ada", "adset yang ada"]):
         if adsets_by_sheet:
@@ -745,6 +878,102 @@ def node_llm_summary(state: AggregationState):
     else:
         print(f"[DEBUG] LLM_SUMMARY: outbound_clicks NOT available")
     
+    # ADDITIVE: Include daily stats for date-specific queries
+    # Check if query asks for specific date ("tanggal dengan...")
+    question_lower = question.lower() if question else ""
+    if "tanggal" in question_lower or "hari" in question_lower or "date" in question_lower:
+        # PRIORITY 1: Use period_stats_daily (has full metrics including leads)
+        period_stats_daily = getattr(state, 'period_stats_daily', None)
+        if period_stats_daily and isinstance(period_stats_daily, dict) and len(period_stats_daily) > 0:
+            print(f"[DEBUG] LLM_SUMMARY: period_stats_daily tersedia dengan {len(period_stats_daily)} days")
+            
+            # ADDITIVE: Smart filtering based on query temporal context
+            from datetime import datetime, timedelta
+            import re
+            
+            # Default: 30 days recent (increased from 15 for better coverage)
+            max_days = 30
+            filtered_days = None
+            
+            # SMART FILTER 1: Specific date mentioned (e.g., "2025-08-01")
+            date_match = re.search(r'20\d{2}-\d{2}-\d{2}', question_lower)
+            if date_match:
+                target_date_str = date_match.group(0)
+                try:
+                    target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+                    print(f"[DEBUG] LLM_SUMMARY: Detected specific date: {target_date}")
+                    # Send ±7 days around target date (14 days total)
+                    start_date = target_date - timedelta(days=7)
+                    end_date = target_date + timedelta(days=7)
+                    filtered_days = {k: v for k, v in period_stats_daily.items() 
+                                   if start_date <= k <= end_date}
+                    print(f"[DEBUG] LLM_SUMMARY: Filtered to ±7 days around {target_date}: {len(filtered_days)} days")
+                except:
+                    pass
+            
+            # SMART FILTER 2: Month mentioned (e.g., "Agustus", "September")
+            if not filtered_days:
+                month_keywords = {
+                    'januari': 1, 'februari': 2, 'maret': 3, 'april': 4,
+                    'mei': 5, 'juni': 6, 'juli': 7, 'agustus': 8,
+                    'september': 9, 'oktober': 10, 'november': 11, 'desember': 12,
+                    'january': 1, 'february': 2, 'march': 3, 'may': 5,
+                    'june': 6, 'july': 7, 'august': 8, 'september': 9,
+                    'october': 10, 'november': 11, 'december': 12
+                }
+                for month_name, month_num in month_keywords.items():
+                    if month_name in question_lower:
+                        print(f"[DEBUG] LLM_SUMMARY: Detected month: {month_name} ({month_num})")
+                        # Filter to all days in that month
+                        filtered_days = {k: v for k, v in period_stats_daily.items() 
+                                       if k.month == month_num}
+                        print(f"[DEBUG] LLM_SUMMARY: Filtered to month {month_num}: {len(filtered_days)} days")
+                        break
+            
+            # SMART FILTER 3: Week mentioned (handled by existing temporal filter, just take reasonable range)
+            if not filtered_days and ("minggu" in question_lower or "week" in question_lower):
+                print(f"[DEBUG] LLM_SUMMARY: Detected week query, using 45 days for context")
+                max_days = 45  # Extend to ~6 weeks for week queries
+            
+            # FALLBACK: Use default max_days (30 or 45) if no specific filter applied
+            if not filtered_days:
+                print(f"[DEBUG] LLM_SUMMARY: No specific temporal filter, using last {max_days} days")
+                sorted_all = sorted(period_stats_daily.items(), key=lambda x: x[0], reverse=True)
+                filtered_days = dict(sorted_all[:max_days])
+            
+            # Generate summary from filtered days
+            daily_summary = f"\n\nDaily Performance Breakdown ({len(filtered_days)} days):\n"
+            # Sort by date descending
+            sorted_days = sorted(filtered_days.items(), key=lambda x: x[0], reverse=True)
+            for day, m in sorted_days:
+                daily_summary += (
+                    f"  - {day}: Cost={m.get('cost', 0):.0f}, Leads={m.get('fb_leads', 0):.0f}, "
+                    f"Reach={m.get('reach', 0):.0f}, Clicks={m.get('link', 0):.0f}, "
+                    f"CTR={m.get('ctr', 0):.2f}%, Conv Rate={m.get('conversion_rate', 0):.2f}%\n"
+                )
+            full_summary += daily_summary
+            print(f"[DEBUG] LLM_SUMMARY: period_stats_daily (full metrics) added to context with {len(filtered_days)} days")
+        else:
+            # FALLBACK: Use daily_weekly (only has cost)
+            daily_weekly = getattr(state, 'daily_weekly', None)
+            if daily_weekly and isinstance(daily_weekly, tuple) and len(daily_weekly) >= 1:
+                daily_cost = daily_weekly[0]  # daily_cost dict
+                if daily_cost and isinstance(daily_cost, dict) and len(daily_cost) > 0:
+                    print(f"[DEBUG] LLM_SUMMARY: daily_cost tersedia dengan {len(daily_cost)} days")
+                    daily_summary = "\n\nDaily Cost Breakdown:\n"
+                    # Sort by date
+                    sorted_days = sorted(daily_cost.items(), key=lambda x: x[0], reverse=True)[:15]
+                    for day, cost in sorted_days:
+                        daily_summary += f"  - {day}: Cost={cost:.0f}\n"
+                    full_summary += daily_summary
+                    print(f"[DEBUG] LLM_SUMMARY: daily_cost (cost only) added to context")
+                else:
+                    print(f"[DEBUG] LLM_SUMMARY: daily_cost is empty or invalid")
+            else:
+                print(f"[DEBUG] LLM_SUMMARY: daily_weekly NOT available")
+                # Add note that daily data is not available
+                full_summary += "\n\nNote: Daily breakdown data is NOT available in this dataset. Data is aggregated at weekly and monthly levels only.\n"
+    
     # ADDITIVE: Include period stats (weekly/monthly) untuk tren temporal
     period_stats_weekly = getattr(state, 'period_stats_weekly', None)
     if period_stats_weekly and isinstance(period_stats_weekly, dict) and len(period_stats_weekly) > 0:
@@ -818,6 +1047,8 @@ def run_aggregation_workflow(sheet_data, question=None, chat_history=None):
     """
     Run aggregation workflow with optional chat history for context.
     
+    ENHANCED: Added temporal filtering support (week-X, month-Y)
+    
     Args:
         sheet_data: List of data rows from Google Sheets
         question: User query string
@@ -838,6 +1069,19 @@ def run_aggregation_workflow(sheet_data, question=None, chat_history=None):
     # ADDITIVE: Include chat_history in state for LLM context
     if chat_history:
         print(f"[DEBUG] Chat history provided: {len(chat_history)} messages")
+    
+    # ADDITIVE: Apply temporal filter BEFORE aggregation (non-breaking, new feature)
+    original_data_count = len(sheet_data)
+    if question:
+        from services.llm_summary import detect_temporal_filter, filter_sheet_data_by_temporal
+        temporal_filter = detect_temporal_filter(question)
+        
+        if any([temporal_filter.get("week_num"), temporal_filter.get("month_num"), temporal_filter.get("year")]):
+            print(f"[DEBUG] Temporal filter detected: {temporal_filter}")
+            sheet_data = filter_sheet_data_by_temporal(sheet_data, temporal_filter)
+            print(f"[DEBUG] Data filtered by temporal constraint: {original_data_count} rows -> {len(sheet_data)} rows")
+        else:
+            print("[DEBUG] No temporal filter detected, using all data")
     
     # Pastikan question dikirim ke state agar intent detection bekerja
     state = AggregationState(
