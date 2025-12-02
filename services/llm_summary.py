@@ -20,19 +20,38 @@ def detect_temporal_filter(question: str) -> dict:
     result = {"week_num": None, "month_name": None, "month_num": None, "year": None}
     question_lower = question.lower()
     
-    # Deteksi minggu ke-X (week-X, minggu ke-3, w3, week 3, dll)
-    week_patterns = [
-        r'minggu\s*ke[-\s]*(\d+)',
-        r'week[-\s]*(\d+)',
-        r'w[-]?(\d+)',
-        r'pekan\s*ke[-\s]*(\d+)'
-    ]
-    for pattern in week_patterns:
-        match = re.search(pattern, question_lower)
-        if match:
-            result["week_num"] = int(match.group(1))
-            print(f"[DEBUG] Detected week filter: week-{result['week_num']}")
+    # Deteksi minggu ke-X (week-X, minggu ke-3, minggu pertama, w3, week 3, dll)
+    # FIXED: Support "minggu pertama", "minggu kedua", dll
+    week_names = {
+        'pertama': 1, 'first': 1, 'ke-1': 1, 'ke 1': 1,
+        'kedua': 2, 'second': 2, 'ke-2': 2, 'ke 2': 2,
+        'ketiga': 3, 'third': 3, 'ke-3': 3, 'ke 3': 3,
+        'keempat': 4, 'fourth': 4, 'ke-4': 4, 'ke 4': 4,
+        'kelima': 5, 'fifth': 5, 'ke-5': 5, 'ke 5': 5
+    }
+    
+    # First try named weeks (pertama, kedua, dll)
+    for week_name, week_number in week_names.items():
+        if f'minggu {week_name}' in question_lower or f'minggu {week_name.replace("-", "[-]?")}' in question_lower or f'week {week_name}' in question_lower:
+            result["week_num"] = week_number
+            print(f"[DEBUG] Detected week filter (named): {week_name} -> week-{result['week_num']}")
             break
+    
+    # If named week not found, try numeric patterns
+    if result["week_num"] is None:
+        week_patterns = [
+            r'minggu\s*ke[-\s]*(\d+)',
+            r'week[-\s]*(\d+)',
+            r'w[-]?(\d+)',
+            r'pekan\s*ke[-\s]*(\d+)',
+            r'w(\d+)',  # Additional pattern for w1, w2, etc
+        ]
+        for pattern in week_patterns:
+            match = re.search(pattern, question_lower)
+            if match:
+                result["week_num"] = int(match.group(1))
+                print(f"[DEBUG] Detected week filter (numeric): week-{result['week_num']}")
+                break
     
     # Deteksi bulan (Indonesia & English)
     month_map = {
@@ -188,7 +207,10 @@ prompt_template = ChatPromptTemplate.from_template(
     Jika pertanyaan user tidak bisa dijawab dari data, jawab dengan jujur dan profesional, misal: "Maaf, data yang Anda minta tidak tersedia."
     Akhiri dengan bullet point saran atau rekomendasi jika memungkinkan.
     
-    PENTING: Jika ada riwayat percakapan di atas, gunakan informasi tersebut untuk memberikan jawaban yang lebih kontekstual. Misalnya, jika user sudah memperkenalkan diri atau memberikan informasi pribadi, ingat dan gunakan informasi tersebut.
+    PENTING: 
+    - Jika ada riwayat percakapan di atas, gunakan informasi tersebut untuk memberikan jawaban yang lebih kontekstual. Misalnya, jika user sudah memperkenalkan diri atau memberikan informasi pribadi, ingat dan gunakan informasi tersebut.
+    - JANGAN mengatakan "data tidak terbagi per minggu" atau "data hanya tersedia per bulan" jika user bertanya per minggu dan summary sudah menunjukkan data mingguan yang terfilter. Gunakan data yang sudah tersedia di summary tanpa membantah ketersediaannya.
+    - Jika summary menunjukkan data (misal: "Outbound Clicks Channel Breakdown" dengan nilai spesifik), gunakan data itu langsung untuk menjawab pertanyaan user, jangan bilang data tidak tersedia.
     
     Pertanyaan user:
     {question}

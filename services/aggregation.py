@@ -21,6 +21,9 @@ def col_fallback(row, names, default=0):
             k_str = str(k).strip().lower() if k is not None else ""
             n_str = str(n).strip().lower() if n is not None else ""
             if k_str == n_str:
+                # ADDITIVE DEBUG: Log when WhatsApp column is found
+                if 'whatsapp' in n_str and row[k] != 0:
+                    print(f"[DEBUG col_fallback] Found {k}={row[k]} (matched with '{n}')")
                 return row[k]
     return default
 
@@ -264,6 +267,7 @@ def aggregate_outbound_clicks(sheet_data):
     Returns: dict dengan total dan proportion/percentage per channel
     
     ADDITIVE: Fungsi baru untuk analisis channel outbound clicks
+    FIXED: Support kolom names dari both worksheets (age gender & region)
     """
     stats = {
         'whatsapp': 0,
@@ -279,27 +283,31 @@ def aggregate_outbound_clicks(sheet_data):
     print(f"[DEBUG] aggregate_outbound_clicks: processing {len(sheet_data)} rows")
     
     for r in sheet_data:
-        # WhatsApp outbound clicks
+        # WhatsApp outbound clicks - Support both "WhatsApp Leads" (age/gender) and actual "WhatsApp" columns
         stats['whatsapp'] += safe_float(col_fallback(r, [
-            'outbound clicks - whatsapp', 'Outbound Clicks - WhatsApp', 
+            'outbound clicks - whatsapp', 'Outbound Clicks - WhatsApp',
+            'whatsapp', 'WhatsApp', 'whatsapp leads', 'WhatsApp Leads',
             'whatsapp clicks', 'WhatsApp Clicks'
         ]))
         
-        # Website outbound clicks
+        # Website outbound clicks - Support "Link Clicks" (from both worksheets)
         stats['website'] += safe_float(col_fallback(r, [
             'outbound clicks - website', 'Outbound Clicks - Website',
-            'website clicks', 'Website Clicks', 'link clicks', 'Link Clicks'
+            'link clicks', 'Link Clicks',
+            'website clicks', 'Website Clicks'
         ]))
         
-        # Messaging outbound clicks
+        # Messaging outbound clicks - Support "Messaging Conversations Started" (from age/gender)
         stats['messaging'] += safe_float(col_fallback(r, [
             'outbound clicks - messaging', 'Outbound Clicks - Messaging',
+            'messaging conversations started', 'Messaging Conversations Started',
             'messaging clicks', 'Messaging Clicks'
         ]))
         
-        # Form clicks (if exists)
+        # Form clicks (if exists) - Support "Lead Form (On-Facebook)"
         stats['form'] += safe_float(col_fallback(r, [
             'outbound clicks - form', 'Outbound Clicks - Form',
+            'lead form (on-facebook)', 'Lead Form (On-Facebook)',
             'form clicks', 'Form Clicks'
         ]))
     
@@ -314,7 +322,7 @@ def aggregate_outbound_clicks(sheet_data):
     else:
         stats['proportion'] = {'whatsapp': 0, 'website': 0, 'messaging': 0, 'form': 0}
     
-    print(f"[DEBUG] aggregate_outbound_clicks: total={stats['total']}, WhatsApp={stats['whatsapp']}, Website={stats['website']}")
+    print(f"[DEBUG] aggregate_outbound_clicks: total={stats['total']}, WhatsApp={stats['whatsapp']}, Website={stats['website']}, Messaging={stats['messaging']}, Form={stats['form']}")
     return stats
 
 def aggregate_breakdown(sheet_data, by="Ad set"):
@@ -335,22 +343,53 @@ def aggregate_breakdown(sheet_data, by="Ad set"):
     return stats
 
 def aggregate_age_gender(sheet_data):
-    stats = defaultdict(lambda: {'cost':0,'wa':0,'cpwa':0,'impr':0,'clicks':0,'link':0,'ctr':0,'lctr':0})
+    stats = defaultdict(lambda: {'cost':0,'wa':0,'cpwa':0,'impr':0,'clicks':0,'link':0,'ctr':0,'lctr':0,'fb':0,'lead_form':0,'frequency':0,'reach':0,'cpm':0,'cpc':0,'cplc':0})
     # Uses global col_fallback helper
+    
+    # ADDITIVE DEBUG: Print first row keys to check column names
+    if sheet_data and len(sheet_data) > 0:
+        print(f"[DEBUG aggregate_age_gender] First row keys: {list(sheet_data[0].keys())}")
 
     for r in sheet_data:
         age = r.get('Age', 'Unknown')
         gender = r.get('Gender', 'Unknown')
         key = f"{age}|{gender}"
         stats[key]['cost'] += safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))
-        stats[key]['wa'] += safe_float(col_fallback(r, ['whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads']))
+        # ADDITIVE: Extended WhatsApp column fallback - include Messaging Conversations and Offsite Leads
+        wa_value = safe_float(col_fallback(r, [
+            'whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads',
+            'messaging conversations started', 'Messaging Conversations Started',
+            'messaging conversations', 'Messaging Conversations',  # ADDITIVE: Shorter variant
+            'leads (offsite/pixels)', 'Leads (Offsite/Pixels)',
+            'offsite leads', 'Offsite Leads',
+            'on-facebook leads', 'On-Facebook Leads'  # ADDITIVE: Facebook leads juga dihitung sebagai WA leads alternative
+        ]))
+        stats[key]['wa'] += wa_value
+        # ADDITIVE: Facebook leads (On-Facebook Leads)
+        fb_value = safe_float(col_fallback(r, ['on-facebook leads', 'On-Facebook Leads', 'facebook leads', 'Facebook Leads']))
+        stats[key]['fb'] += fb_value
+        # ADDITIVE: Lead Form
+        lead_form_value = safe_float(col_fallback(r, ['lead form', 'Lead Form', 'LeadForm']))
+        stats[key]['lead_form'] += lead_form_value
         stats[key]['impr'] += safe_float(col_fallback(r, ['impressions', 'Impressions', 'IMP', 'imp']))
         stats[key]['clicks'] += safe_float(col_fallback(r, ['all clicks', 'clicks all', 'All Clicks', 'Clicks all', 'clicks', 'Clicks']))
         stats[key]['link'] += safe_float(col_fallback(r, ['link clicks', 'Link Clicks', 'link', 'Link']))
+        stats[key]['frequency'] += safe_float(col_fallback(r, ['frequency', 'Frequency']))
+        stats[key]['reach'] += safe_float(col_fallback(r, ['reach', 'Reach']))
+    
     for key, d in stats.items():
         d['cpwa'] = (d['cost']/d['wa']) if d['wa'] else 0
         d['ctr'] = (d['clicks']/d['impr']*100) if d['impr'] else 0
         d['lctr'] = (d['link']/d['impr']*100) if d['impr'] else 0
+        d['cpm'] = (d['cost']/d['impr']*1000) if d['impr'] else 0
+        d['cpc'] = (d['cost']/d['clicks']) if d['clicks'] else 0
+        d['cplc'] = (d['cost']/d['link']) if d['link'] else 0
+    
+    # ADDITIVE DEBUG: Print aggregated results to check WA leads
+    print(f"[DEBUG aggregate_age_gender] Aggregated {len(stats)} segments")
+    for key, d in list(stats.items())[:3]:  # Print first 3 segments
+        print(f"[DEBUG aggregate_age_gender]   {key}: cost={d['cost']:.0f}, wa={d['wa']:.0f}, lead_form={d['lead_form']:.0f}, cpwa={d['cpwa']:.0f}")
+    
     return stats
 
 # ADDITIVE: Enhanced age & gender aggregation dengan metrik lengkap
@@ -409,6 +448,10 @@ def aggregate_age_gender_enhanced(sheet_data, adset_name=None):
     
     print(f"[DEBUG] aggregate_age_gender_enhanced: processing {len(sheet_data)} rows")
     
+    # ADDITIVE DEBUG: Print first row keys to check column names
+    if sheet_data and len(sheet_data) > 0:
+        print(f"[DEBUG aggregate_age_gender_enhanced] First row keys: {list(sheet_data[0].keys())}")
+    
     for r in sheet_data:
         age = r.get('Age', 'Unknown')
         gender = r.get('Gender', 'Unknown')
@@ -430,7 +473,16 @@ def aggregate_age_gender_enhanced(sheet_data, adset_name=None):
         stats[key]['link'] += safe_float(col_fallback(r, ['link clicks', 'Link Clicks', 'link', 'Link']))
         
         # Leads
-        stats[key]['wa'] += safe_float(col_fallback(r, ['whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads']))
+        # ADDITIVE: Extended WhatsApp column fallback - include Messaging Conversations and Offsite Leads  
+        wa_value = safe_float(col_fallback(r, [
+            'whatsapp', 'whatsapp leads', 'WhatsApp', 'WhatsApp Leads',
+            'messaging conversations started', 'Messaging Conversations Started',
+            'messaging conversations', 'Messaging Conversations',  # ADDITIVE: Shorter variant
+            'leads (offsite/pixels)', 'Leads (Offsite/Pixels)',
+            'offsite leads', 'Offsite Leads',
+            'on-facebook leads', 'On-Facebook Leads'  # ADDITIVE: Facebook leads juga dihitung sebagai WA leads alternative
+        ]))
+        stats[key]['wa'] += wa_value
         stats[key]['fb_leads'] += safe_float(col_fallback(r, ['on-facebook leads', 'On-Facebook Leads', 'Facebook Leads']))
         stats[key]['lead_form'] += safe_float(col_fallback(r, ['lead form', 'Lead Form', 'LeadForm']))
     
@@ -454,6 +506,11 @@ def aggregate_age_gender_enhanced(sheet_data, adset_name=None):
         d['conversion_rate'] = (total_leads / d['clicks'] * 100) if d['clicks'] > 0 else 0
     
     print(f"[DEBUG] aggregate_age_gender_enhanced: found {len(stats)} unique age|gender segments")
+    
+    # ADDITIVE DEBUG: Print first 3 segments to check WA leads
+    for key, d in list(stats.items())[:3]:
+        print(f"[DEBUG aggregate_age_gender_enhanced]   {key}: cost={d['cost']:.0f}, wa={d['wa']:.0f}, cpwa={d['cpwa']:.0f}")
+    
     return stats
 
 # Additive: agregasi tren CTR per bulan untuk setiap kombinasi age|gender
@@ -582,9 +639,35 @@ def aggregate_breakdown_enhanced(sheet_data, by="Ad set"):
     # Uses global col_fallback helper (THIS IS THE ONE THAT WAS CRASHING AT LINE 599)
     
     print(f"[DEBUG] aggregate_breakdown_enhanced: processing {len(sheet_data)} rows, grouping by '{by}'")
+    if sheet_data and len(sheet_data) > 0:
+        first_row = sheet_data[0]
+        first_keys = list(first_row.keys())
+        print(f"[DEBUG] aggregate_breakdown_enhanced: First row has {len(first_keys)} columns")
+        # Only print column names if trying "Ad set" to avoid spam
+        if by and "set" in by.lower():
+            print(f"[DEBUG] aggregate_breakdown_enhanced: Columns include: {first_keys[:10]}...")  # First 10 only
+    
+    # Build list of column name variants to try (ADDITIVE: more variants for robustness)
+    column_variants = [by, by.title(), by.lower()]
+    if ' ' in by:
+        underscore_variant = by.replace(' ', '_')
+        column_variants.extend([underscore_variant, underscore_variant.title(), underscore_variant.lower()])
+    if ' ' in by:
+        no_space_variant = by.replace(' ', '')
+        column_variants.extend([no_space_variant, no_space_variant.title(), no_space_variant.lower()])
+    column_variants = list(dict.fromkeys(column_variants))
+    if by and "set" in by.lower():
+        print(f"[DEBUG] aggregate_breakdown_enhanced: Trying column variants: {column_variants}")
     
     for r in sheet_data:
-        key = r.get(by, r.get(by.title(), r.get(by.lower(), 'Unknown')))
+        # Try all variants
+        key = None
+        for col_var in column_variants:
+            key = r.get(col_var)
+            if key:
+                break
+        if not key:
+            key = 'Unknown'
         
         # Core metrics
         stats[key]['cost'] += safe_float(col_fallback(r, ['cost', 'biaya', 'Cost', 'COST', 'Biaya']))

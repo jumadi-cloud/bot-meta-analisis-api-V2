@@ -23,6 +23,86 @@ from services.aggregation import (
     aggregate_adset_by_age_gender  # ADDITIVE: Aggregate by adset filtered by age/gender
 )
 
+# ADDITIVE: Helper function to extract month from date string
+def extract_month_from_date(date_str):
+    """Extract month number (1-12) from date string in various formats"""
+    if not date_str:
+        return None
+    import re
+    from datetime import datetime
+    
+    date_str = str(date_str).strip()
+    
+    # Try ISO format YYYY-MM-DD
+    m = re.match(r'(\d{4})-(\d{2})-(\d{2})', date_str)
+    if m:
+        return int(m.group(2))
+    
+    # Try DD/MM/YYYY
+    m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', date_str)
+    if m:
+        return int(m.group(2))
+    
+    # Try datetime parsing as fallback
+    try:
+        dt = datetime.strptime(date_str, '%Y-%m-%d')
+        return dt.month
+    except:
+        pass
+    
+    try:
+        dt = datetime.strptime(date_str, '%d/%m/%Y')
+        return dt.month
+    except:
+        pass
+    
+    return None
+
+# ADDITIVE: Helper function to extract week number from date string
+def extract_week_from_date(date_str, month_num=None):
+    """
+    Extract week number (1-5) within a month from date string.
+    If month_num provided, calculate week relative to that month's start.
+    """
+    if not date_str:
+        return None
+    import re
+    from datetime import datetime
+    
+    date_str = str(date_str).strip()
+    dt = None
+    
+    # Try ISO format YYYY-MM-DD
+    m = re.match(r'(\d{4})-(\d{2})-(\d{2})', date_str)
+    if m:
+        dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    
+    # Try DD/MM/YYYY
+    if not dt:
+        m = re.match(r'(\d{1,2})/(\d{1,2})/(\d{4})', date_str)
+        if m:
+            dt = datetime(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+    
+    # Try datetime parsing as fallback
+    if not dt:
+        try:
+            dt = datetime.strptime(date_str, '%Y-%m-%d')
+        except:
+            try:
+                dt = datetime.strptime(date_str, '%d/%m/%Y')
+            except:
+                return None
+    
+    if not dt:
+        return None
+    
+    # Calculate week number within the month (1-based)
+    # Week 1 = days 1-7, Week 2 = days 8-14, etc.
+    day_of_month = dt.day
+    week_of_month = ((day_of_month - 1) // 7) + 1
+    
+    return week_of_month
+
 # Move AggregationState class definition to the top so all functions can reference it
 from pydantic import BaseModel
 class AggregationState(BaseModel):
@@ -207,7 +287,21 @@ def node_period_monthly(state: AggregationState):
 def node_outbound_clicks(state: AggregationState):
     """Outbound clicks proportion analysis"""
     print("[DEBUG] node_outbound_clicks: executing")
-    data = aggregate_outbound_clicks(state.sheet_data)
+    
+    # ADDITIVE: Apply temporal filtering if question contains temporal keywords
+    from services.llm_summary import detect_temporal_filter, filter_sheet_data_by_temporal
+    
+    question = getattr(state, 'question', '')
+    sheet_data = state.sheet_data
+    
+    # Detect and apply temporal filter
+    temporal_filter = detect_temporal_filter(question)
+    if any([temporal_filter.get('week_num'), temporal_filter.get('month_num'), temporal_filter.get('year')]):
+        print(f"[DEBUG] node_outbound_clicks: Applying temporal filter - week={temporal_filter.get('week_num')}, month={temporal_filter.get('month_num')}, year={temporal_filter.get('year')}")
+        sheet_data = filter_sheet_data_by_temporal(sheet_data, temporal_filter)
+        print(f"[DEBUG] node_outbound_clicks: Data filtered from {len(state.sheet_data)} to {len(sheet_data)} rows")
+    
+    data = aggregate_outbound_clicks(sheet_data)
     print(f"[DEBUG] node_outbound_clicks: total={data.get('total', 0)}")
     return state.copy(update={"outbound_clicks": data, "question": state.question})
 
@@ -259,10 +353,10 @@ def node_detect_intent(state: AggregationState):
     
     # ADDITIVE: Detect ranking queries FIRST (highest priority) - NEW PATTERN
     ranking_patterns = [
-        r'\b(mana|adset|ad|region|segmen|age|gender|campaign)\b.{0,50}\b(tertinggi|terendah|terbesar|terkecil|paling tinggi|paling rendah|maksimal|minimal)\b',
-        r'\b(tertinggi|terendah|terbesar|terkecil|paling tinggi|paling rendah|maksimal|minimal)\b.{0,50}\b(cost|biaya|spend|reach|clicks|ctr|impressions|leads)\b',
+        r'\b(mana|adset|ad|region|segmen|age|gender|campaign)\b.{0,50}\b(tertinggi|terendah|terbesar|terkecil|terbanyak|tersedikit|paling tinggi|paling rendah|paling banyak|paling sedikit|maksimal|minimal)\b',
+        r'\b(tertinggi|terendah|terbesar|terkecil|terbanyak|tersedikit|paling tinggi|paling rendah|paling banyak|paling sedikit|maksimal|minimal)\b.{0,50}\b(cost|biaya|spend|reach|clicks|ctr|impressions|leads|lead form)\b',
         r'\b(top|bottom|best|worst)\b.{0,30}\b(adset|ad|region|campaign)\b',
-        r'\bmenyumbang\b.{0,30}\b(cost|biaya|spend|reach|clicks)\b.{0,30}\b(terbesar|tertinggi|terkecil|terendah)\b'
+        r'\bmenyumbang\b.{0,30}\b(cost|biaya|spend|reach|clicks)\b.{0,30}\b(terbesar|tertinggi|terkecil|terendah|terbanyak|tersedikit)\b'
     ]
     ranking_match = any(re.search(p, question) for p in ranking_patterns)
     
@@ -513,9 +607,385 @@ def node_llm_summary(state: AggregationState):
     import calendar
     import re
     
+    # ADDITIVE: Handle query "kelompok usia/gender mana yang memiliki [metric] terendah/tertinggi?"
+    # Pattern: ranking age/gender segments by metric (NEW HANDLER - HIGHEST PRIORITY)
+    question = getattr(state, 'question', '').lower()
+    
+    # Detect pattern: "kelompok usia mana" or "gender mana" + "terendah/tertinggi" + metric
+    if any(kw in question for kw in ["kelompok usia", "kelompok umur", "age group", "usia mana", "umur mana", "gender mana", "jenis kelamin mana"]) and any(kw in question for kw in ["terendah", "tertinggi", "terkecil", "terbesar", "paling rendah", "paling tinggi", "minimal", "maksimal", "lowest", "highest"]):
+        print("[DEBUG] Detected query: ranking age/gender segments by metric")
+        
+        # Detect sorting order (ascending for terendah/terkecil, descending for tertinggi/terbesar)
+        is_ascending = any(kw in question for kw in ["terendah", "terkecil", "paling rendah", "minimal", "lowest"])
+        order_text = "terendah" if is_ascending else "tertinggi"
+        
+        # Extract month filter if present
+        import calendar
+        bulan_map = {
+            'january': 1, 'jan': 1, 'januari': 1,
+            'february': 2, 'feb': 2, 'februari': 2,
+            'march': 3, 'mar': 3, 'maret': 3,
+            'april': 4, 'apr': 4,
+            'may': 5, 'mei': 5,
+            'june': 6, 'jun': 6, 'juni': 6,
+            'july': 7, 'jul': 7, 'juli': 7,
+            'august': 8, 'aug': 8, 'agustus': 8,
+            'september': 9, 'sep': 9, 'sept': 9,
+            'october': 10, 'oct': 10, 'oktober': 10, 'okt': 10,
+            'november': 11, 'nov': 11,
+            'december': 12, 'dec': 12, 'desember': 12, 'des': 12
+        }
+        month_filter = None
+        month_name = None
+        for nama_bulan, idx_bulan in bulan_map.items():
+            if nama_bulan in question:
+                month_filter = idx_bulan
+                month_name = nama_bulan.capitalize()
+                break
+        
+        # ADDITIVE: Extract week filter if present (minggu ke 1, minggu ke 2, week 2, etc.)
+        import re
+        week_filter = None
+        week_match = re.search(r'minggu ke[- ]?(\d+)|week[- ]?(\d+)', question)
+        if week_match:
+            week_filter = int(week_match.group(1) or week_match.group(2))
+            print(f"[DEBUG] Week filter detected: minggu ke-{week_filter}")
+        
+        # Extract metric - TAMBAHKAN CPWA dan metric lainnya
+        metric_map = {
+            # Specific lead-related keywords FIRST (longest match first to avoid early matching)
+            'lead form': 'lead_form',  # Lead Form metric - MUST come before 'lead'
+            'lead_form': 'lead_form',
+            'cost per wa': 'cpwa',
+            'cost per whatsapp': 'cpwa',
+            'biaya per wa': 'cpwa',
+            'cost per click': 'cpc',
+            'cost per mille': 'cpm',
+            'cost per link click': 'cplc',
+            'click through rate': 'ctr',
+            'link ctr': 'lctr',
+            'on-facebook leads': 'fb',
+            # Generic single-word keywords (less specific)
+            'cpwa': 'cpwa',
+            'cpc': 'cpc',
+            'cpm': 'cpm',
+            'cplc': 'cplc',
+            'ctr': 'ctr',
+            'lctr': 'lctr',
+            'klik': 'clicks',
+            'click': 'clicks',
+            'form': 'lead_form',  # After 'lead form', so it won't interfere
+            'lead': 'wa',  # Default to WA leads (generic "lead" without "form") - LAST to not interfere with 'lead form'
+            'leads': 'wa',
+            'whatsapp': 'wa',
+            'wa': 'wa',
+            'facebook': 'fb',
+            'fb': 'fb',
+            'konversi': 'wa',
+            'cost': 'cost',
+            'biaya': 'cost',
+            'spend': 'cost',
+            'impresi': 'impr',
+            'impression': 'impr',
+            'jangkauan': 'reach',
+            'reach': 'reach',
+            'frequency': 'frequency',
+            'frekuensi': 'frequency'
+        }
+        
+        detected_metric = None
+        for kw, metric_key in metric_map.items():
+            if kw in question:
+                detected_metric = metric_key
+                print(f"[DEBUG] Metric detected: '{kw}' -> '{metric_key}'")
+                break
+        
+        if not detected_metric:
+            detected_metric = 'cpwa'  # Default to CPWA for this type of query
+            print(f"[DEBUG] No metric detected, using default: '{detected_metric}'")
+        
+        # ADDITIVE: Updated debug print to include week info
+        week_text = f", week={week_filter}" if week_filter else ""
+        print(f"[DEBUG] Ranking query - metric={detected_metric}, order={order_text}, month={month_name}{week_text}")
+        
+        # Get age_gender breakdown
+        age_gender = getattr(state, 'age_gender', None)
+        if not age_gender or len(age_gender) == 0:
+            # Aggregate if not yet done
+            age_gender = aggregate_age_gender(state.sheet_data)
+        
+        if age_gender and len(age_gender) > 0:
+            # ADDITIVE: Filter by month AND week if specified
+            if month_filter or week_filter:
+                filtered_data = state.sheet_data
+                
+                # Apply month filter
+                if month_filter:
+                    print(f"[DEBUG] Filtering data by month: {month_filter} ({month_name})")
+                    filtered_data = [row for row in filtered_data if row.get('Date') and extract_month_from_date(row.get('Date')) == month_filter]
+                
+                # Apply week filter (only if month also specified, week is relative to month)
+                if week_filter and month_filter:
+                    print(f"[DEBUG] Filtering data by week: {week_filter} within month {month_name}")
+                    filtered_data = [row for row in filtered_data if row.get('Date') and extract_week_from_date(row.get('Date'), month_filter) == week_filter]
+                
+                if len(filtered_data) > 0:
+                    age_gender = aggregate_age_gender(filtered_data)
+                    period_text = f"minggu ke-{week_filter} bulan {month_name}" if week_filter else f"bulan {month_name}"
+                    print(f"[DEBUG] Filtered {len(state.sheet_data)} rows -> {len(filtered_data)} rows for {period_text}")
+                else:
+                    period_text = f"minggu ke-{week_filter} di bulan {month_name}" if week_filter else f"bulan {month_name}"
+                    llm_answer = f"Tidak ditemukan data untuk {period_text}. Silakan cek periode yang tersedia."
+                    return state.copy(update={"llm_answer": llm_answer})
+            
+            # Filter segments that have valid metric data (exclude 0 or None)
+            valid_segments = {}
+            total_wa_leads = 0  # ADDITIVE: Track total WA leads for better error message
+            for segment_key, metrics in age_gender.items():
+                metric_value = metrics.get(detected_metric, 0)
+                # For CPWA, only include segments with WA leads > 0 (CPWA is cost/wa_leads)
+                if detected_metric == 'cpwa':
+                    wa_leads = metrics.get('wa', 0)
+                    total_wa_leads += wa_leads  # ADDITIVE: Sum up WA leads
+                    if wa_leads > 0 and metric_value > 0:
+                        valid_segments[segment_key] = metrics
+                # For lead_form, include ALL segments even if 0 (show complete ranking)
+                elif detected_metric == 'lead_form':
+                    valid_segments[segment_key] = metrics
+                elif metric_value > 0:  # For other metrics, just check > 0
+                    valid_segments[segment_key] = metrics
+            
+            if len(valid_segments) == 0:
+                # ADDITIVE: More informative error message for CPWA when no WA leads
+                if detected_metric == 'cpwa' and total_wa_leads == 0:
+                    period_text = f"minggu ke-{week_filter} di bulan {month_name}" if (week_filter and month_name) else (f"bulan {month_name}" if month_name else "periode yang diminta")
+                    llm_answer = f"📊 Tidak ditemukan data **WhatsApp Leads** untuk {period_text}.\n\n💡 **Penjelasan**: CPWA (Cost Per WhatsApp Lead) = Cost ÷ WhatsApp Leads. Karena tidak ada WhatsApp leads di {period_text}, CPWA tidak dapat dihitung.\n\n✅ **Saran**: Coba periode lain yang memiliki data WhatsApp leads, atau gunakan metrik lain seperti:\n- **Cost** (Total biaya)\n- **Clicks** (Total klik)\n- **CTR** (Click-through rate)\n- **Impressions** (Total tayangan)"
+                else:
+                    llm_answer = f"Tidak ditemukan data {detected_metric.upper()} yang valid untuk analisis" + (f" pada bulan {month_name}" if month_name else "") + "."
+                return state.copy(update={"llm_answer": llm_answer})
+            
+            # Sort by metric
+            sorted_segments = sorted(valid_segments.items(), key=lambda x: x[1].get(detected_metric, 0), reverse=not is_ascending)
+            
+            # Build answer
+            metric_label_map = {
+                'cpwa': 'CPWA (Cost Per WhatsApp Lead)',
+                'cpc': 'CPC (Cost Per Click)',
+                'cpm': 'CPM (Cost Per Mille)',
+                'cplc': 'CPLC (Cost Per Link Click)',
+                'ctr': 'CTR (Click Through Rate)',
+                'lctr': 'LCTR (Link Click Through Rate)',
+                'clicks': 'Clicks (Klik)',
+                'wa': 'WhatsApp Leads',
+                'fb': 'Facebook Leads',
+                'lead_form': 'Lead Form (Form Leads)',
+                'cost': 'Cost (Biaya)',
+                'impr': 'Impressions',
+                'reach': 'Reach (Jangkauan)',
+                'frequency': 'Frequency (Frekuensi)'
+            }
+            metric_label = metric_label_map.get(detected_metric, detected_metric.upper())
+            
+            # ADDITIVE: Include week info in response text
+            if week_filter and month_name:
+                period_text = f" pada minggu ke-**{week_filter}** bulan **{month_name}**"
+            elif month_name:
+                period_text = f" pada bulan **{month_name}**"
+            else:
+                period_text = ""
+            
+            answer_lines = [
+                f"Berdasarkan analisis data{period_text}, berikut adalah ranking kelompok usia berdasarkan **{metric_label} {order_text}**:\n"
+            ]
+            
+            # Show top 5 segments
+            for i, (segment_key, metrics) in enumerate(sorted_segments[:5], 1):
+                age_group, gender = segment_key.split('|')
+                metric_value = metrics.get(detected_metric, 0)
+                cost = metrics.get('cost', 0)
+                wa_leads = metrics.get('wa', 0)
+                
+                gender_text = "👨 Laki-laki" if gender.lower() == "male" else "👩 Wanita" if gender.lower() == "female" else gender
+                
+                # Format metric value based on type
+                if detected_metric in ['ctr', 'lctr']:
+                    metric_display = f"{metric_value:.2f}%"
+                elif detected_metric in ['frequency']:
+                    metric_display = f"{metric_value:.2f}x"
+                elif detected_metric in ['cpwa', 'cpc', 'cpm', 'cplc', 'cost']:
+                    metric_display = f"Rp {metric_value:,.0f}"
+                else:
+                    metric_display = f"{metric_value:,.0f}"
+                
+                answer_lines.append(
+                    f"{i}. **{age_group} | {gender_text}**: {metric_display}"
+                    + (f" (Cost: Rp {cost:,.0f}, WA Leads: {wa_leads:,.0f})" if detected_metric == 'cpwa' else f" (Cost: Rp {cost:,.0f})")
+                )
+            
+            # Add insight
+            winner_segment, winner_metrics = sorted_segments[0]
+            winner_age, winner_gender = winner_segment.split('|')
+            winner_value = winner_metrics.get(detected_metric, 0)
+            gender_text = "laki-laki" if winner_gender.lower() == "male" else "wanita"
+            
+            if detected_metric in ['ctr', 'lctr']:
+                value_display = f"{winner_value:.2f}%"
+            elif detected_metric in ['frequency']:
+                value_display = f"{winner_value:.2f}x"
+            elif detected_metric in ['cpwa', 'cpc', 'cpm', 'cplc', 'cost']:
+                value_display = f"Rp {winner_value:,.0f}"
+            else:
+                value_display = f"{winner_value:,.0f}"
+            
+            # ADDITIVE: Include week/month in insight
+            insight_period = f" pada minggu ke-{week_filter} bulan {month_name}" if (week_filter and month_name) else (f" pada bulan {month_name}" if month_name else "")
+            
+            answer_lines.append(
+                f"\n💡 **Insight**: Kelompok **{winner_age} {gender_text}** memiliki {metric_label} **{order_text}** dengan nilai **{value_display}**{insight_period}."
+            )
+            
+            # Additional recommendation for CPWA
+            if detected_metric == 'cpwa' and is_ascending:
+                answer_lines.append(
+                    f"\n📊 **Rekomendasi**: Fokuskan budget lebih banyak pada segmen **{winner_age} {gender_text}** karena memiliki efisiensi biaya per WhatsApp lead yang paling baik (CPWA terendah)."
+                )
+            
+            llm_answer = "\n".join(answer_lines)
+            print(f"[DEBUG] Generated answer for age/gender ranking by metric query")
+            return state.copy(update={"llm_answer": llm_answer})
+        else:
+            llm_answer = "Tidak ditemukan data age & gender untuk analisis. Pastikan worksheet yang dipilih memiliki kolom Age dan Gender."
+            return state.copy(update={"llm_answer": llm_answer})
+    
+    # NEW HANDLER: Ranking adsets by lead metrics (lead form, whatsapp, fb leads)
+    # Pattern: "adset dengan lead form terbanyak/terendah" or "adset mana dengan lead form tertinggi"
+    if any(kw in question for kw in ["lead form", "lead_form", "facebook leads", "whatsapp leads", "messaging"]) and any(kw in question for kw in ["adset", "ad set", "campaign"]) and any(kw in question for kw in ["terbanyak", "terendah", "tertinggi", "terkecil", "paling banyak", "paling sedikit", "top", "ranking"]):
+        print("[DEBUG] NEW HANDLER: Detected query - ranking adsets by lead metrics")
+        print(f"[DEBUG] ADSET HANDLER ENTRY: state.sheet_data has {len(state.sheet_data)} rows")
+        try:
+            # Define bulan_map for month filtering (ADDITIVE: moved from age/gender handler)
+            bulan_map = {
+                'january': 1, 'jan': 1, 'januari': 1,
+                'february': 2, 'feb': 2, 'februari': 2,
+                'march': 3, 'mar': 3, 'maret': 3,
+                'april': 4, 'apr': 4,
+                'may': 5, 'mei': 5,
+                'june': 6, 'jun': 6, 'juni': 6,
+                'july': 7, 'jul': 7, 'juli': 7,
+                'august': 8, 'aug': 8, 'agustus': 8,
+                'september': 9, 'sep': 9, 'sept': 9,
+                'october': 10, 'oct': 10, 'oktober': 10, 'okt': 10,
+                'november': 11, 'nov': 11,
+                'december': 12, 'dec': 12, 'desember': 12, 'des': 12
+            }
+            
+            # Determine which lead metric
+            lead_metric = 'lead_form'
+            if 'whatsapp' in question:
+                lead_metric = 'wa'
+            elif 'facebook' in question or 'on-facebook' in question:
+                lead_metric = 'fb_leads'
+            elif 'messaging' in question:
+                lead_metric = 'wa'  # Messaging is counted as WA leads
+            
+            # Determine sort order
+            is_ascending = any(kw in question for kw in ["terendah", "terkecil", "paling sedikit", "lowest", "minimum"])
+            order_text = "terendah" if is_ascending else "terbanyak"
+            
+            # Extract month/week filter if present
+            month_filter = None
+            month_name = None
+            for nama_bulan, idx_bulan in bulan_map.items():
+                if nama_bulan in question:
+                    month_filter = idx_bulan
+                    month_name = nama_bulan.capitalize()
+                    break
+            
+            # Extract week filter
+            week_filter = None
+            week_match = re.search(r'minggu ke[- ]?(\d+)|week[- ]?(\d+)', question)
+            if week_match:
+                week_filter = int(week_match.group(1) or week_match.group(2))
+            
+            # Filter data by month/week if specified
+            filtered_data = state.sheet_data
+            print(f"[DEBUG] ADSET HANDLER: Starting with {len(filtered_data)} total rows")
+            print(f"[DEBUG] ADSET HANDLER: month_filter={month_filter}, month_name={month_name}")
+            
+            if month_filter:
+                before_filter = len(filtered_data)
+                filtered_data = [row for row in filtered_data if row.get('Date') and extract_month_from_date(row.get('Date')) == month_filter]
+                after_filter = len(filtered_data)
+                print(f"[DEBUG] ADSET HANDLER: After month filter {month_name}: {before_filter} → {after_filter} rows")
+                period_text = f"minggu ke-{week_filter} bulan {month_name}" if week_filter else f"bulan {month_name}"
+            else:
+                period_text = ""
+                print(f"[DEBUG] ADSET HANDLER: No month filter, using all {len(filtered_data)} rows")
+            
+            if week_filter and month_filter:
+                before_week = len(filtered_data)
+                filtered_data = [row for row in filtered_data if row.get('Date') and extract_week_from_date(row.get('Date'), month_filter) == week_filter]
+                after_week = len(filtered_data)
+                print(f"[DEBUG] ADSET HANDLER: After week filter week {week_filter}: {before_week} → {after_week} rows")
+            
+            # Aggregate by adset
+            print(f"[DEBUG] ADSET HANDLER: Aggregating {len(filtered_data)} filtered rows by Ad set")
+            if filtered_data and len(filtered_data) > 0:
+                print(f"[DEBUG] ADSET HANDLER: Sample row Ad set value: {filtered_data[0].get('Ad set', 'MISSING')}")
+            
+            adset_breakdown = aggregate_breakdown_enhanced(filtered_data, by="Ad set")
+            
+            if adset_breakdown and len(adset_breakdown) > 0:
+                print(f"[DEBUG] Adset breakdown: {len(adset_breakdown)} adsets found")
+                
+                # Sort by lead metric
+                sorted_adsets = sorted(adset_breakdown.items(), key=lambda x: x[1].get(lead_metric, 0), reverse=not is_ascending)
+                
+                # ADDITIVE: Include ALL adsets regardless of lead_form value (like age/gender handler does)
+                # This allows ranking even when all adsets have 0 leads (terendah will show 0s, terbanyak will show 0s)
+                # Removed filter: if not is_ascending: sorted_adsets = [(name, m) for name, m in sorted_adsets if m.get(lead_metric, 0) > 0]
+                
+                # Map metric to label (MOVED BEFORE if block for availability in all branches)
+                metric_labels = {
+                    'lead_form': 'Lead Form',
+                    'wa': 'WhatsApp Leads',
+                    'fb_leads': 'Facebook Leads'
+                }
+                metric_label = metric_labels.get(lead_metric, lead_metric)
+                
+                if sorted_adsets:
+                    answer_lines = [f"Berikut ranking adset berdasarkan {metric_label} {order_text}{f' untuk {period_text}' if period_text else ''}:\n"]
+                    
+                    for i, (adset_name, metrics) in enumerate(sorted_adsets[:10], 1):
+                        lead_count = int(metrics.get(lead_metric, 0))
+                        cost = int(metrics.get('cost', 0))
+                        clicks = int(metrics.get('clicks', 0))
+                        
+                        # Calculate cost per lead if applicable
+                        if lead_count > 0:
+                            cost_per_lead = cost / lead_count if lead_count > 0 else 0
+                            answer_lines.append(f"{i}. **{adset_name}**: {lead_count} {metric_label} | Cost: Rp {cost:,} | Cost/Lead: Rp {cost_per_lead:,.0f}")
+                        else:
+                            answer_lines.append(f"{i}. **{adset_name}**: {lead_count} {metric_label} | Cost: Rp {cost:,}")
+                    
+                    llm_answer = "\n".join(answer_lines)
+                    print(f"[DEBUG] Generated answer for adset lead metric ranking query")
+                    return state.copy(update={"llm_answer": llm_answer})
+                else:
+                    llm_answer = f"Tidak ada adset dengan {metric_label} {order_text}{f' untuk {period_text}' if period_text else ''}."
+                    return state.copy(update={"llm_answer": llm_answer})
+            else:
+                llm_answer = "Tidak ditemukan data adset untuk analisis lead form."
+                return state.copy(update={"llm_answer": llm_answer})
+        except Exception as e:
+            print(f"[ERROR] NEW HANDLER exception: {e}")
+            import traceback
+            traceback.print_exc()
+            llm_answer = f"Terjadi error saat memproses query lead form: {str(e)}"
+            return state.copy(update={"llm_answer": llm_answer})
+    
     # ADDITIVE: Handle query "kelompok age/gender X menghasilkan metric Y di adset mana?"
     # Pattern: age/gender filter + ranking by adset
-    question = getattr(state, 'question', '').lower()
     
     # Detect pattern: "kelompok ... di adset mana" or "... terbanyak di adset mana"
     if ("di adset mana" in question or "adset mana" in question) and any(kw in question for kw in ["kelompok", "usia", "age", "laki", "pria", "male", "wanita", "female", "perempuan"]):
@@ -532,24 +1002,56 @@ def node_llm_summary(state: AggregationState):
         elif any(w in question for w in ["wanita", "perempuan", "female"]):
             gender = "female"
         
-        # Extract metric (clicks, leads, cost, impressions, etc.)
+        # Extract metric (clicks, leads, cost, impressions, CTR, CPWA, etc.)
+        # ADDITIVE: Expanded metric_map to include ALL metrics (CTR, CPWA, CPC, CPM, CPLC, etc.)
         metric_map = {
+            'ctr': 'ctr',
+            'click through rate': 'ctr',
+            'click-through rate': 'ctr',
+            'lctr': 'lctr',
+            'link ctr': 'lctr',
+            'link click through rate': 'lctr',
+            'cpwa': 'cpwa',
+            'cost per whatsapp': 'cpwa',
+            'cost per wa': 'cpwa',
+            'biaya per wa': 'cpwa',
+            'cpc': 'cpc',
+            'cost per click': 'cpc',
+            'biaya per klik': 'cpc',
+            'cpm': 'cpm',
+            'cost per mille': 'cpm',
+            'biaya per seribu': 'cpm',
+            'cplc': 'cplc',
+            'cost per link click': 'cplc',
+            'biaya per link click': 'cplc',
+            'cpf': 'cpf',
+            'cost per form': 'cpf',
+            'biaya per form': 'cpf',
             'klik': 'clicks',
             'click': 'clicks',
+            'clicks': 'clicks',
             'lead': 'fb_leads',
+            'leads': 'fb_leads',
             'konversi': 'fb_leads',
             'cost': 'cost',
             'biaya': 'cost',
+            'spend': 'cost',
+            'pengeluaran': 'cost',
             'impresi': 'impr',
             'impression': 'impr',
+            'impressions': 'impr',
+            'tayangan': 'impr',
             'jangkauan': 'reach',
-            'reach': 'reach'
+            'reach': 'reach',
+            'frequency': 'frequency',
+            'frekuensi': 'frequency'
         }
         
         detected_metric = 'clicks'  # default
         for kw, metric_key in metric_map.items():
-            if kw in question:
+            if kw in question.lower():
                 detected_metric = metric_key
+                print(f"[DEBUG] Detected metric in age/gender+adset query: '{kw}' -> '{metric_key}'")
                 break
         
         print(f"[DEBUG] Extracted: age_range={age_range}, gender={gender}, metric={detected_metric}")
@@ -564,13 +1066,25 @@ def node_llm_summary(state: AggregationState):
             # Build answer
             age_text = f"usia {age_range}" if age_range else "semua usia"
             gender_text = "laki-laki" if gender == "male" else "wanita" if gender == "female" else "semua gender"
-            metric_text = {
+            
+            # ADDITIVE: Expanded metric_text mapping to include ALL metrics
+            metric_text_map = {
                 'clicks': 'klik',
                 'fb_leads': 'leads',
                 'cost': 'cost',
                 'impr': 'impressions',
-                'reach': 'reach'
-            }.get(detected_metric, detected_metric)
+                'reach': 'reach',
+                'ctr': 'CTR',
+                'lctr': 'LCTR',
+                'cpwa': 'CPWA',
+                'cpc': 'CPC',
+                'cpm': 'CPM',
+                'cplc': 'CPLC',
+                'cpf': 'CPF',
+                'frequency': 'frequency',
+                'wa': 'WhatsApp'
+            }
+            metric_text = metric_text_map.get(detected_metric, detected_metric.upper())
             
             answer_lines = [
                 f"Berdasarkan data untuk kelompok **{gender_text} {age_text}**:\n",

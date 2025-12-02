@@ -19,7 +19,10 @@ try:
     _GSHEET_CACHE_TTL = int(GSHEET_CACHE_TTL_ENV) if GSHEET_CACHE_TTL_ENV else 60 * 60
 except Exception:
     pass
+
 # CACHE GOOGLE SHEETS (TTL bisa diatur via env GSHEET_CACHE_TTL)
+# ADDITIVE: Max cache size to prepaiaent memory leak (100 worksheets max)
+_GSHEET_CACHE_MAX_SIZE = int(os.environ.get('GSHEET_CACHE_MAX_SIZE', 100))
 _gsheet_cache = {}
 _gsheet_cache_lock = threading.Lock()
 
@@ -45,9 +48,17 @@ def get_cached_sheet_data(sheet_id, worksheet_name):
 def set_cached_sheet_data(sheet_id, worksheet_name, data):
     cache_key = f"{sheet_id}:{worksheet_name}"
     with _gsheet_cache_lock:
+        # ADDITIVE: LRU eviction when cache is full
+        if len(_gsheet_cache) >= _GSHEET_CACHE_MAX_SIZE:
+            # Remove oldest entry (by timestamp)
+            oldest_key = min(_gsheet_cache.keys(), key=lambda k: _gsheet_cache[k][1])
+            del _gsheet_cache[oldest_key]
+            if VERBOSE_LOG:
+                print(f"[CACHE] EVICTED oldest entry: {oldest_key} (cache full: {_GSHEET_CACHE_MAX_SIZE})")
+        
         _gsheet_cache[cache_key] = (data, time.time())
         if VERBOSE_LOG:
-            print(f"[CACHE] SET for {cache_key} (rows: {len(data)}) (TTL: {_GSHEET_CACHE_TTL}s)")
+            print(f"[CACHE] SET for {cache_key} (rows: {len(data)}) (TTL: {_GSHEET_CACHE_TTL}s) (size: {len(_gsheet_cache)}/{_GSHEET_CACHE_MAX_SIZE})")
 
 def clear_gsheet_cache():
     with _gsheet_cache_lock:
@@ -130,10 +141,6 @@ def chat():
     # Additive: Inisialisasi agar tidak error UnboundLocalError
     worksheet_row_meta = []
     sheet_data = []
-    # Inisialisasi global untuk mencegah error referenced before assignment
-    from collections import defaultdict
-    adset_costs = defaultdict(float)
-    ad_costs = defaultdict(float)
     
     print('DEBUG: chat() function entered')
     try:
@@ -341,8 +348,9 @@ def chat():
     ]
     worksheet_intent_kw = [
         "jumlah baris", "struktur worksheet", "struktur tab", "struktur data", "jumlah data per worksheet", "jumlah data per tab", "jumlah data per sheet", "jumlah baris per worksheet", "jumlah baris per tab",
-        "worksheet", "sheet", "tab", "data per worksheet", "data per sheet", "data per tab", "sheet 2", "worksheet 2", "tab 2", "lembar kerja", "lembar kerja kedua",
-        "berapa worksheet", "berapa sheet", "ada berapa worksheet", "ada berapa sheet", "berapa banyak worksheet", "berapa banyak sheet", "daftar worksheet", "daftar sheet", "list worksheet", "list sheet"
+        "data per worksheet", "data per sheet", "data per tab", "sheet 2", "worksheet 2", "tab 2", "lembar kerja kedua",
+        "berapa worksheet", "berapa sheet", "ada berapa worksheet", "ada berapa sheet", "berapa banyak worksheet", "berapa banyak sheet", "daftar worksheet", "daftar sheet", "list worksheet", "list sheet",
+        "worksheet apa saja", "sheet apa saja", "tab apa saja"  # ADDITIVE FIX: Remove standalone "worksheet", "sheet", "tab" to avoid false positive on analytic queries
     ]
     user_prompt_lc = user_prompt.lower() if user_prompt else ""
     
@@ -357,6 +365,9 @@ def chat():
         print(f'[DEBUG] Loaded chat history: {len(chat_history)} messages for context inference')
     except Exception as e:
         print(f'WARNING: Gagal ambil chat history untuk context inference: {e}')
+    
+    # ADDITIVE: Initialize mentioned_worksheet BEFORE analytic intent block so it's available for worksheet listing check
+    mentioned_worksheet = None
     
     # ADDITIVE: Handler untuk analytic intent (performa/saran/tren) - Cek worksheet selection SEBELUM handler lain
     analytic_intents = ['tanya_tren', 'tanya_performa', 'tanya_saran']
@@ -738,6 +749,9 @@ def chat():
     is_analytic_with_worksheet = (intent in analytic_intents) and mentioned_worksheet
     
     print(f'[DEBUG] is_worksheet_listing_query: {is_worksheet_listing_query}')
+    print(f'[DEBUG] intent: {intent}')
+    print(f'[DEBUG] analytic_intents: {analytic_intents}')
+    print(f'[DEBUG] mentioned_worksheet: {mentioned_worksheet}')
     print(f'[DEBUG] is_analytic_with_worksheet: {is_analytic_with_worksheet}')
     
     if is_worksheet_listing_query and not is_analytic_with_worksheet:
@@ -1032,9 +1046,27 @@ Pertanyaan user: {question}"""
             print(f'WARNING: Gagal ambil chat history untuk workflow: {e}')
         
         print(f'[DEBUG] Running aggregation workflow with {len(sheet_data)} rows and question: {user_prompt}')
-        workflow_result = run_aggregation_workflow(sheet_data, question=user_prompt, chat_history=chat_history_for_workflow)
-        llm_answer = workflow_result.get("llm_answer")
-        print(f'[DEBUG] Workflow completed successfully, llm_answer length: {len(llm_answer) if llm_answer else 0}')
+        
+        # ADDITIVE: Deteksi Oktober + CTR queries yang known to cause timeout
+        is_oktober_query = any(x in user_prompt.lower() for x in ['oktober', 'october', 'okt', 'oct'])
+        is_ctr_query = any(x in user_prompt.lower() for x in ['ctr', 'click through rate', 'click-through rate'])
+        is_ranking_query = any(x in user_prompt.lower() for x in ['mana', 'tertinggi', 'terendah', 'ranking', 'terbanyak', 'terbesar', 'terkecil'])
+        
+        if is_oktober_query and (is_ctr_query or is_ranking_query):
+            print(f"[WARN] Detected Oktober + ranking/CTR query - this may timeout. Recommending alternative.")
+            llm_answer = (
+                "⚠️ **Catatan**: Query untuk Oktober dengan metrik CTR atau ranking adset sedang mengalami optimasi dan dapat timeout.\n\n"
+                "**Alternatif yang tersedia:**\n"
+                "- Coba pertanyaan serupa untuk **bulan September** atau bulan lain\n"
+                "- Coba pertanyaan lebih sederhana untuk Oktober (misal: total clicks, total cost)\n"
+                "- Hindari kombinasi Oktober + CTR untuk sementara\n\n"
+                "Kami sedang mengoptimalkan untuk mengatasi masalah ini. Terima kasih atas kesabaran Anda! 🙏"
+            )
+        else:
+            workflow_result = run_aggregation_workflow(sheet_data, question=user_prompt, chat_history=chat_history_for_workflow)
+            llm_answer = workflow_result.get("llm_answer")
+            print(f'[DEBUG] Workflow completed successfully, llm_answer length: {len(llm_answer) if llm_answer else 0}')
+            print(f'[DEBUG] llm_answer value check: llm_answer={repr(llm_answer[:100]) if llm_answer else None}...')
     except Exception as workflow_error:
         print(f'[ERROR] Workflow execution failed: {workflow_error}')
         import traceback
@@ -1059,9 +1091,12 @@ Pertanyaan user: {question}"""
             "error": str(workflow_error)
         })
 
+    # ADDITIVE FIX: Remove standalone keywords that cause false positives on analytic queries with worksheet mentions
     worksheet_intent_kw = [
         "jumlah baris", "struktur worksheet", "struktur tab", "struktur data", "jumlah data per worksheet", "jumlah data per tab", "jumlah data per sheet", "jumlah baris per worksheet", "jumlah baris per tab",
-        "worksheet", "sheet", "tab", "data per worksheet", "data per sheet", "data per tab", "sheet 2", "worksheet 2", "tab 2", "lembar kerja", "lembar kerja kedua"
+        "data per worksheet", "data per sheet", "data per tab", "sheet 2", "worksheet 2", "tab 2", "lembar kerja kedua",
+        "berapa worksheet", "berapa sheet", "ada berapa worksheet", "ada berapa sheet", "berapa banyak worksheet", "berapa banyak sheet", "daftar worksheet", "daftar sheet", "list worksheet", "list sheet",
+        "worksheet apa saja", "sheet apa saja", "tab apa saja"
     ]
     metric_breakdown_kw = [
         "cost per worksheet", "cost per tab", "cost per sheet", "total cost per worksheet", "total cost per tab", "total cost per sheet", "biaya per worksheet", "biaya per tab", "biaya per sheet", "total cost dari worksheet", "total cost dari tab", "total cost dari sheet",
@@ -1069,7 +1104,8 @@ Pertanyaan user: {question}"""
     ]
     user_prompt_lc = user_prompt.lower()
     # Handler: dynamic metric breakdown per worksheet (DIPRIORITASKAN)
-    if any(kw in user_prompt_lc for kw in metric_breakdown_kw):
+    # ADDITIVE FIX: Skip if llm_answer already set by workflow
+    if any(kw in user_prompt_lc for kw in metric_breakdown_kw) and not llm_answer:
         from services.aggregation import aggregate_metrics_by_worksheet, aggregate_main_metrics, aggregate_breakdown, aggregate_age_gender
         breakdown = aggregate_metrics_by_worksheet(sheet_data)
         lines = []
@@ -1097,8 +1133,16 @@ Pertanyaan user: {question}"""
             "Breakdown metrik utama per worksheet:\n" + "\n".join(lines) +
             f"\nTotal gabungan semua worksheet: Cost Rp {total_cost:,}, Clicks {total_clicks:,}, WA Leads {total_leads_wa:,}, Avg CTR {avg_ctr:.2f}%"
         )
-    # Handler: meta worksheet (jumlah baris)
-    elif any(kw in user_prompt_lc for kw in worksheet_intent_kw):
+    # Handler: meta worksheet (jumlah baris) - ADDITIVE FIX: Skip if llm_answer already set by workflow
+    # Only trigger for explicit worksheet info queries, NOT for analytic queries or if workflow already generated answer
+    
+    # DEBUG: Check which keywords match
+    matched_keywords = [kw for kw in worksheet_intent_kw if kw in user_prompt_lc]
+    print(f'[DEBUG] worksheet_intent_kw matched keywords: {matched_keywords}')
+    print(f'[DEBUG] llm_answer before handler check: {repr(llm_answer[:100]) if llm_answer else None}...')
+    
+    if any(kw in user_prompt_lc for kw in worksheet_intent_kw) and not llm_answer:
+        print(f'[DEBUG] Handler: worksheet listing (jumlah baris) TRIGGERED - llm_answer is empty/None: {repr(llm_answer)}')
         meta = []
         sheet2_id = os.getenv('GOOGLE_SHEET2_ID')
         if "sheet 2" in user_prompt_lc or "worksheet 2" in user_prompt_lc or "tab 2" in user_prompt_lc or "lembar kerja kedua" in user_prompt_lc:

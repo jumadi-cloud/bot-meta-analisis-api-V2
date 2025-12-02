@@ -1,22 +1,24 @@
+# Core Flask & API
 flask
 flask-cors
-python-dotenv
-gspread
-google-auth
-langchain-google-genai
-chromadb
-langchain-community
-flask
+gunicorn
+
+# Google Sheets Integration
 gspread
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
-python-dotenv
-langchain-google-genai
-gunicorn
-langgraph
 
-# Tambahan untuk fitur chart/visualisasi
+# LLM & AI
+langchain-google-genai
+langchain-community
+langgraph
+chromadb
+
+# Utilities
+python-dotenv
+pandas
+
+# Visualization
 plotly
 kaleido
-pandas
